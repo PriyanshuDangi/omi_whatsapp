@@ -11,7 +11,7 @@ export interface ParsedCommand {
 /**
  * Regex patterns for voice command detection (case-insensitive).
  *
- * Supported separators between name and content: "saying", "asking", ":", "that"
+ * Supported separators between name and content: "saying", "asking", "telling", "tell him/her/them", "that", ":"
  *
  * Supported patterns:
  *   - "send message to {name} saying/asking/: {content}"
@@ -22,7 +22,7 @@ export interface ParsedCommand {
  *
  * Each regex captures two groups: (1) name, (2) content.
  */
-const SEP = '(?:saying|asking|that|:)';
+const SEP = '(?:saying|asking|telling|tell(?:\\s+(?:him|her|them))?|that|:)';
 const COMMAND_PATTERNS: RegExp[] = [
   new RegExp(`send\\s+(?:a\\s+)?message\\s+to\\s+(.+?)\\s*${SEP}\\s*(.+)`, 'i'),
   new RegExp(`^message\\s+(.+?)\\s*${SEP}\\s*(.+)`, 'i'),
