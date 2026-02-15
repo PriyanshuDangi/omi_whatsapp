@@ -9,6 +9,8 @@ import makeWASocket, {
   type Contact,
 } from '@whiskeysockets/baileys';
 import type { Boom } from '@hapi/boom';
+import fs from 'fs';
+import path from 'path';
 import pino from 'pino';
 import type { WhatsAppSession, SessionEventCallback, SessionEvent } from '../types/whatsapp.js';
 
@@ -17,6 +19,41 @@ const sessions = new Map<string, WhatsAppSession>();
 
 // Contacts keyed by uid → jid → Contact
 const contactStore = new Map<string, Map<string, Contact>>();
+
+/** Path to the contacts cache file for a uid. */
+function contactsCachePath(uid: string): string {
+  return path.join('sessions', uid, 'contacts.json');
+}
+
+/** Save contacts to disk so they survive restarts. */
+function persistContacts(uid: string): void {
+  const store = contactStore.get(uid);
+  if (!store || store.size === 0) return;
+  try {
+    const data = Object.fromEntries(store);
+    fs.writeFileSync(contactsCachePath(uid), JSON.stringify(data), 'utf-8');
+    console.log(`[WHATSAPP] Persisted ${store.size} contacts to disk for uid: ${uid}`);
+  } catch (err) {
+    console.error(`[WHATSAPP] Failed to persist contacts for uid: ${uid}`, err);
+  }
+}
+
+/** Load contacts from disk cache. */
+function loadCachedContacts(uid: string): void {
+  const filePath = contactsCachePath(uid);
+  if (!fs.existsSync(filePath)) return;
+  try {
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const store = contactStore.get(uid) ?? new Map<string, Contact>();
+    for (const [jid, contact] of Object.entries(data)) {
+      store.set(jid, contact as Contact);
+    }
+    contactStore.set(uid, store);
+    console.log(`[WHATSAPP] Loaded ${store.size} cached contacts from disk for uid: ${uid}`);
+  } catch (err) {
+    console.error(`[WHATSAPP] Failed to load cached contacts for uid: ${uid}`, err);
+  }
+}
 
 // SSE listeners keyed by uid (multiple browsers can listen)
 const listeners = new Map<string, Set<SessionEventCallback>>();
@@ -79,10 +116,11 @@ export async function initSession(uid: string): Promise<void> {
 
   sessions.set(uid, session);
 
-  // Initialize contact store for this uid if not present
+  // Initialize contact store for this uid — load from disk cache first
   if (!contactStore.has(uid)) {
     contactStore.set(uid, new Map());
   }
+  loadCachedContacts(uid);
 
   // Handle connection updates (QR codes, connection state)
   socket.ev.on('connection.update', (update) => {
@@ -132,7 +170,8 @@ export async function initSession(uid: string): Promise<void> {
     for (const contact of contacts) {
       store.set(contact.id, contact);
     }
-    logger.info({ uid, count: contacts.length }, 'Contacts synced from history');
+    console.log(`[WHATSAPP] Contacts synced from history: ${contacts.length} (total: ${store.size}) for uid: ${uid}`);
+    persistContacts(uid);
   });
 
   // Collect contacts as they arrive
@@ -141,7 +180,8 @@ export async function initSession(uid: string): Promise<void> {
     for (const contact of contacts) {
       store.set(contact.id, contact);
     }
-    logger.debug({ uid, count: contacts.length }, 'Contacts upserted');
+    console.log(`[WHATSAPP] Contacts upserted: ${contacts.length} (total: ${store.size}) for uid: ${uid}`);
+    persistContacts(uid);
   });
 
   // Update contacts
@@ -198,4 +238,20 @@ export async function sendMessage(uid: string, jid: string, text: string): Promi
 /** Get all known contacts for a uid. */
 export function getContacts(uid: string): Map<string, Contact> {
   return contactStore.get(uid) ?? new Map();
+}
+
+/** Check if contacts have been synced for a uid. */
+export function hasContacts(uid: string): boolean {
+  const store = contactStore.get(uid);
+  return !!store && store.size > 0;
+}
+
+/** Wait for contacts to sync, retrying a few times. */
+export async function waitForContacts(uid: string, retries = 10, delayMs = 2000): Promise<boolean> {
+  for (let i = 0; i < retries; i++) {
+    if (hasContacts(uid)) return true;
+    console.log(`[WHATSAPP] Waiting for contacts to sync... (${i + 1}/${retries})`);
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return hasContacts(uid);
 }

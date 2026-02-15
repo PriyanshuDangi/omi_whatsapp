@@ -17,6 +17,7 @@ import {
   sendSelfMessage,
   sendMessage,
   getContacts,
+  waitForContacts,
 } from '../services/whatsapp.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
@@ -28,7 +29,11 @@ export const webhookRouter = Router();
 // Tracks processed segment start times per session to avoid re-triggering commands.
 // Map<session_id, Set<segment_start_time>>
 // ---------------------------------------------------------------------------
-const processedSegments = new Map<string, Set<number>>();
+const processedSegments = new Map<string, Set<string>>();
+
+// Accumulated full text per session for cross-fragment command detection.
+// Map<session_id, string>
+const sessionText = new Map<string, string>();
 
 // Tracks which commands have already been sent per session to avoid duplicates.
 // Map<session_id, Set<"name:content_hash">>
@@ -41,6 +46,7 @@ setInterval(() => {
   // For an MVP this is fine — sessions rarely last > 30 min.
   processedSegments.clear();
   processedCommands.clear();
+  sessionText.clear();
   logger.debug('Cleared dedup state');
 }, SESSION_TTL_MS);
 
@@ -60,6 +66,9 @@ webhookRouter.post('/memory', (req, res) => {
   // Process asynchronously
   const memory = req.body as OmiMemory;
 
+  console.log('[MEMORY WEBHOOK] uid:', uid);
+  console.log('[MEMORY WEBHOOK] raw body:', JSON.stringify(req.body, null, 2));
+
   // Skip discarded or empty memories
   if (memory.discarded) {
     logger.info({ uid, memoryId: memory.id }, 'Skipping discarded memory');
@@ -68,7 +77,7 @@ webhookRouter.post('/memory', (req, res) => {
 
   const recap = formatMemoryRecap(memory);
   if (!recap) {
-    logger.info({ uid, memoryId: memory.id }, 'Skipping memory — no formatted recap');
+    logger.info({ uid, memoryId: memory.id, structured: memory.structured }, 'Skipping memory — no formatted recap');
     return;
   }
 
@@ -87,7 +96,6 @@ webhookRouter.post('/memory', (req, res) => {
 // ---------------------------------------------------------------------------
 webhookRouter.post('/realtime', (req, res) => {
   const uid = req.query.uid as string;
-  const sessionId = req.query.session_id as string;
 
   if (!uid) {
     res.status(400).json({ error: 'Missing uid query parameter' });
@@ -97,8 +105,30 @@ webhookRouter.post('/realtime', (req, res) => {
   // Return 200 immediately
   res.status(200).json({ status: 'ok' });
 
-  const segments = req.body as TranscriptSegment[];
-  if (!Array.isArray(segments) || segments.length === 0) return;
+  // Omi sends either:
+  //   1. A flat array of TranscriptSegment[] (with session_id as query param)
+  //   2. An object { session_id, segments: TranscriptSegment[] }
+  const body = req.body;
+  let segments: TranscriptSegment[];
+  let sessionId: string;
+
+  if (Array.isArray(body)) {
+    segments = body;
+    sessionId = req.query.session_id as string;
+  } else if (body && Array.isArray(body.segments)) {
+    segments = body.segments;
+    sessionId = body.session_id || (req.query.session_id as string);
+  } else {
+    console.log('[REALTIME WEBHOOK] unexpected body format:', JSON.stringify(body, null, 2));
+    return;
+  }
+
+  console.log('[REALTIME WEBHOOK] uid:', uid, 'sessionId:', sessionId, 'segments:', segments.length);
+  for (const seg of segments) {
+    console.log(`  [${seg.speaker}] "${seg.text}"`);
+  }
+
+  if (segments.length === 0) return;
 
   if (!sessionId) {
     logger.warn({ uid }, 'Missing session_id — skipping realtime processing');
@@ -112,13 +142,16 @@ webhookRouter.post('/realtime', (req, res) => {
   if (!processedCommands.has(sessionId)) {
     processedCommands.set(sessionId, new Set());
   }
+  if (!sessionText.has(sessionId)) {
+    sessionText.set(sessionId, '');
+  }
 
   const seen = processedSegments.get(sessionId)!;
   const sentCommands = processedCommands.get(sessionId)!;
 
-  // Filter to only new segments
+  // Filter to only new segments (dedup by segment id or text+start combo)
   const newSegments = segments.filter((seg) => {
-    const key = seg.start;
+    const key = seg.id || `${seg.start}:${seg.text}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -126,16 +159,38 @@ webhookRouter.post('/realtime', (req, res) => {
 
   if (newSegments.length === 0) return;
 
-  // Concatenate all new segment text and check for commands
-  const fullText = newSegments.map((s) => s.text).join(' ');
-  const command = parseCommand(fullText);
+  // Strategy: try each new segment individually first, then try the
+  // short rolling window (last partial + new text) for fragmented speech.
+  const prevPartial = sessionText.get(sessionId)!;
+  const newText = newSegments.map((s) => s.text).join(' ');
 
-  if (!command) return;
+  // Candidates to parse: (1) each segment alone, (2) partial + new text combined
+  const candidates: string[] = [
+    ...newSegments.map((s) => s.text),
+    prevPartial ? prevPartial + ' ' + newText : '',
+  ].filter(Boolean);
+
+  let command = null;
+  for (const candidate of candidates) {
+    command = parseCommand(candidate);
+    if (command) break;
+  }
+
+  if (!command) {
+    // No command found — store new text as partial for next call (keep only last chunk)
+    sessionText.set(sessionId, newText);
+    return;
+  }
+
+  // Command found — clear partial buffer
+  sessionText.set(sessionId, '');
+
+  console.log('[REALTIME] command detected:', command);
 
   // Dedup: avoid re-sending the same command in this session
   const commandKey = `${command.name.toLowerCase()}:${command.content.toLowerCase()}`;
   if (sentCommands.has(commandKey)) {
-    logger.debug({ uid, sessionId, commandKey }, 'Command already processed — skipping');
+    console.log('[REALTIME] command already processed — skipping');
     return;
   }
   sentCommands.add(commandKey);
@@ -149,6 +204,16 @@ webhookRouter.post('/realtime', (req, res) => {
 /**
  * Process a detected voice command: find the contact and send the message.
  */
+/** Wait for WhatsApp to connect, retrying a few times. */
+async function waitForConnection(uid: string, retries = 5, delayMs = 2000): Promise<boolean> {
+  for (let i = 0; i < retries; i++) {
+    if (isConnected(uid)) return true;
+    console.log(`[REALTIME] WhatsApp not connected yet, waiting... (${i + 1}/${retries})`);
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return isConnected(uid);
+}
+
 async function processVoiceCommand(
   uid: string,
   name: string,
@@ -156,7 +221,9 @@ async function processVoiceCommand(
 ): Promise<void> {
   logger.info({ uid, name, content }, 'Processing voice command');
 
-  if (!isConnected(uid)) {
+  // Wait up to 10s for WhatsApp to connect (handles server restart race)
+  const connected = await waitForConnection(uid);
+  if (!connected) {
     logger.warn({ uid }, 'WhatsApp not connected — cannot send message');
     await sendNotification(uid, 'WhatsApp is not connected. Please link your account first.');
     return;
@@ -167,7 +234,22 @@ async function processVoiceCommand(
     return;
   }
 
+  // Wait for contacts to sync (they arrive after history sync, which can take 20s+)
+  const hasCtx = await waitForContacts(uid);
+  if (!hasCtx) {
+    console.log('[CONTACTS] No contacts synced — cannot look up name');
+  }
+
   const contacts = getContacts(uid);
+
+  // Debug: log all contacts so we can see what names are available
+  console.log(`[CONTACTS] Looking for "${name}" among ${contacts.size} contacts:`);
+  for (const [jid, c] of contacts) {
+    if (c.name || c.notify || c.verifiedName) {
+      console.log(`  ${jid} → name="${c.name}" notify="${c.notify}" verified="${c.verifiedName}"`);
+    }
+  }
+
   const match = findContact(contacts, name);
 
   if (!match) {
