@@ -1,0 +1,41 @@
+---
+description: Project context and conventions for the Omi WhatsApp integration
+alwaysApply: true
+---
+
+# Omi WhatsApp Integration
+
+This is a hackathon MVP — an Omi integration app that sends WhatsApp meeting recaps and handles voice-triggered messaging.
+
+## Key Docs
+
+- `docs/prd.md` — product requirements, features, edge cases
+- `docs/tech-stack.md` — architecture, dependencies, project structure
+
+## Stack
+
+- Node.js 22 + TypeScript + Express
+- `@whiskeysockets/baileys` for WhatsApp (QR auth, contacts, messaging)
+- Single process, no database, in-memory state for MVP
+
+## Conventions
+
+- Keep it simple. This is a hackathon — working > elegant.
+- No LLMs. Omi's `structured` payload already provides title, overview, and action items.
+- One concern per file. Routes in `src/routes/`, services in `src/services/`, types in `src/types/`.
+- Always handle the `uid` query parameter — it identifies the Omi user.
+- Return `200 OK` quickly from webhooks. Do async work after responding when possible.
+- Log with pino. Set level to `silent` for demo, `info` for dev.
+
+## Endpoints
+
+- `GET /setup` — QR code page for WhatsApp linking
+- `GET /setup/status` — returns `{is_setup_completed: bool}` for Omi polling
+- `POST /webhook/memory` — receives Omi memory, sends WhatsApp recap
+- `POST /webhook/realtime` — receives live transcript, detects voice commands
+
+## Edge Cases to Always Handle
+
+- Skip discarded memories (`discarded: true`)
+- Deduplicate real-time transcript segments by `session_id`
+- Gracefully handle missing WhatsApp sessions (user not linked yet)
