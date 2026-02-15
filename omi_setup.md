@@ -83,12 +83,25 @@ These fields let Omi know how to guide the user through WhatsApp linking.
 - **Auth URL** — When the user installs your app, Omi opens this URL (with `?uid=USER_ID` appended) so they can scan the WhatsApp QR code.
 - **Setup Completed URL** — Omi polls this endpoint (with `?uid=USER_ID`) and expects `{ "is_setup_completed": true }` once WhatsApp is linked.
 
-## 7. Save and Install the App
+## 7. Configure Chat Tools (Optional — enables Omi AI to send WhatsApp messages)
+
+This lets Omi's AI decide on its own to send WhatsApp messages when users ask in chat (e.g., "Send a WhatsApp message to John saying hi" or "Send me the meeting notes on WhatsApp").
+
+| Field | Value |
+|-------|-------|
+| **Chat Tools Manifest URL** | `{NGROK_URL}/.well-known/omi-tools.json` |
+
+Omi will automatically fetch the tool definitions from this URL. The manifest exposes two tools:
+
+- **send_whatsapp_message** — Send a message to any WhatsApp contact by name
+- **send_meeting_notes** — Send meeting notes/summary to the user's own WhatsApp
+
+## 8. Save and Install the App
 
 1. Tap **Save** / **Submit** to create the app
 2. Install the app on your own account (you can test with your own device)
 
-## 8. Link WhatsApp
+## 9. Link WhatsApp
 
 1. After installing, Omi will open the Auth URL in a browser
 2. You'll see the QR code setup page
@@ -97,7 +110,7 @@ These fields let Omi know how to guide the user through WhatsApp linking.
 5. Wait for the green "WhatsApp Connected!" confirmation
 6. Omi will detect the setup is complete and close the auth flow
 
-## 9. Test the Integration
+## 10. Test the Integration
 
 ### Test Memory Recap
 

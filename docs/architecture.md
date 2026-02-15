@@ -9,7 +9,8 @@ src/
 ├── index.ts                  # Entry point — Express app, route mounting, startup
 ├── routes/
 │   ├── setup.ts              # GET /setup, GET /setup/status, GET /setup/events (SSE)
-│   └── webhook.ts            # POST /webhook/memory, POST /webhook/realtime
+│   ├── webhook.ts            # POST /webhook/memory, POST /webhook/realtime
+│   └── chat-tools.ts         # GET /.well-known/omi-tools.json, POST /tools/send_message, POST /tools/send_meeting_notes
 ├── services/
 │   ├── whatsapp.ts           # Baileys connection lifecycle, QR, messaging, contacts
 │   ├── formatter.ts          # Omi memory → WhatsApp recap message
@@ -57,6 +58,25 @@ Omi app opens Auth URL
   → SSE pushes QR data URL to browser → user scans
   → Baileys connection.update → "connected" event via SSE
   → Omi polls GET /setup/status?uid=... → { is_setup_completed: true }
+```
+
+### Chat Tools (Feature 3 — Omi AI-initiated)
+
+```
+User asks Omi AI: "Send a WhatsApp message to John saying hi"
+  → Omi AI decides to call send_whatsapp_message tool
+  → POST /tools/send_message { uid, contact_name, message }
+  → chat-tools.ts: validate params, check WhatsApp connected
+  → contact-matcher.ts: fuzzy match contact_name
+  → whatsapp.ts: sendMessage() to matched JID
+  → Return { result: "Message sent to John on WhatsApp." }
+
+User asks Omi AI: "Send me the meeting notes on WhatsApp"
+  → Omi AI decides to call send_meeting_notes tool
+  → POST /tools/send_meeting_notes { uid, summary }
+  → chat-tools.ts: validate, check WhatsApp connected
+  → whatsapp.ts: sendSelfMessage() with formatted notes
+  → Return { result: "Meeting notes sent to your WhatsApp." }
 ```
 
 ## State Management
