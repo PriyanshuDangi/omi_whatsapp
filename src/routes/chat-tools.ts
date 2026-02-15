@@ -5,6 +5,7 @@
  * POST /tools/send_message            → Send a WhatsApp message to a contact
  * POST /tools/send_meeting_notes      → Send meeting notes to self on WhatsApp
  * POST /tools/send_recap_to_contact   → Send meeting recap to a specific contact
+ * POST /tools/set_reminder            → Set a timed WhatsApp reminder (self or contact)
  *
  * These endpoints follow the Omi Chat Tools spec:
  * https://docs.omi.me/doc/developer/apps/ChatTools
@@ -13,6 +14,7 @@
 import { Router } from 'express';
 import pino from 'pino';
 import { findContact } from '../services/contact-matcher.js';
+import { scheduleReminder } from '../services/reminder.js';
 import {
   isConnected,
   sendSelfMessage,
@@ -92,6 +94,32 @@ function buildManifest(baseUrl: string) {
         },
         auth_required: true,
         status_message: 'Sending recap to contact on WhatsApp...',
+      },
+      {
+        name: 'set_whatsapp_reminder',
+        description:
+          'Set a timed reminder that will be sent as a WhatsApp message. If no contact name is provided, the reminder is sent to the user themselves. Use this when the user says "remind me in 30 minutes to call the dentist", "set a reminder for 1 hour to check email", or "remind John in 10 minutes about the meeting".',
+        endpoint: `${baseUrl}/tools/set_reminder`,
+        method: 'POST',
+        parameters: {
+          properties: {
+            message: {
+              type: 'string',
+              description: 'The reminder message text (e.g., "Call the dentist", "Check email")',
+            },
+            delay_minutes: {
+              type: 'integer',
+              description: 'How many minutes from now to send the reminder (e.g., 5, 15, 30, 60)',
+            },
+            contact_name: {
+              type: 'string',
+              description: 'Optional: name of the contact to send the reminder to. If not provided, reminder is sent to the user themselves.',
+            },
+          },
+          required: ['message', 'delay_minutes'],
+        },
+        auth_required: true,
+        status_message: 'Setting reminder...',
       },
     ],
   };
@@ -254,4 +282,75 @@ toolsRouter.post('/send_recap_to_contact', async (req, res) => {
     logger.error({ uid, contactName, err }, 'Chat tool: failed to send recap to contact');
     res.status(500).json({ error: `Failed to send recap to ${match.displayName}. Please try again.` });
   }
+});
+
+// ---------------------------------------------------------------------------
+// POST /tools/set_reminder
+// ---------------------------------------------------------------------------
+toolsRouter.post('/set_reminder', async (req, res) => {
+  const data = req.body;
+
+  const uid = data?.uid || (req.query.uid as string);
+  const message = data?.message;
+  const delayMinutes = data?.delay_minutes;
+  const contactName = data?.contact_name; // optional
+
+  if (!uid) {
+    res.status(400).json({ error: 'Missing uid parameter' });
+    return;
+  }
+  if (!message) {
+    res.status(400).json({ error: 'Missing required parameter: message' });
+    return;
+  }
+  if (!delayMinutes || delayMinutes < 1) {
+    res.status(400).json({ error: 'Missing or invalid delay_minutes (must be >= 1)' });
+    return;
+  }
+
+  if (!isConnected(uid)) {
+    res.status(401).json({
+      error: 'WhatsApp not connected. Please link your WhatsApp account first in the app setup.',
+    });
+    return;
+  }
+
+  // Resolve target: self or a specific contact
+  let target = 'self';
+  let targetName = 'yourself';
+
+  if (contactName) {
+    const hasCtx = await waitForContacts(uid, 5, 1000);
+    if (!hasCtx) {
+      res.status(500).json({ error: 'Contacts not synced yet. Please try again in a moment.' });
+      return;
+    }
+
+    const contacts = getContacts(uid);
+    const match = findContact(contacts, contactName);
+
+    if (!match) {
+      res.status(404).json({ error: `Could not find a WhatsApp contact named "${contactName}". Check the spelling or use their saved name.` });
+      return;
+    }
+
+    target = match.jid;
+    targetName = match.displayName;
+  }
+
+  scheduleReminder(uid, message, delayMinutes, target, targetName);
+
+  // Send a confirmation to the user's own WhatsApp
+  const timeLabel = delayMinutes >= 60
+    ? `${Math.floor(delayMinutes / 60)}h ${delayMinutes % 60 > 0 ? `${delayMinutes % 60}m` : ''}`
+    : `${delayMinutes} min`;
+  const confirmText = contactName
+    ? `✅ *Reminder set*\n\n"${message}"\n→ To: ${targetName}\n⏰ In ${timeLabel}`
+    : `✅ *Reminder set*\n\n"${message}"\n⏰ In ${timeLabel}`;
+
+  sendSelfMessage(uid, confirmText).catch((err) => {
+    logger.error({ uid, err }, 'Failed to send reminder confirmation');
+  });
+
+  res.json({ result: `Reminder set! "${message}" will be sent to ${targetName} in ${timeLabel}.` });
 });

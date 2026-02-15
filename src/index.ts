@@ -12,6 +12,7 @@ import { setupRouter } from './routes/setup.js';
 import { webhookRouter } from './routes/webhook.js';
 import { manifestRouter, toolsRouter } from './routes/chat-tools.js';
 import { initSession, getContacts } from './services/whatsapp.js';
+import { startReminderTick } from './services/reminder.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -83,4 +84,7 @@ app.listen(PORT, () => {
 
   // Restore sessions after server is listening
   restoreSessions();
+
+  // Start the reminder tick loop
+  startReminderTick();
 });
