@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connect WhatsApp — Omi</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #f5f5f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .container {
+      text-align: center;
+      max-width: 420px;
+      padding: 2rem;
+    }
+
+    .logo {
+      font-size: 2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #25d366, #128c7e);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      color: #888;
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+    }
+
+    #qr-container {
+      background: #fff;
+      border-radius: 16px;
+      padding: 1.5rem;
+      display: inline-block;
+      margin-bottom: 1.5rem;
+      min-width: 280px;
+      min-height: 280px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #qr-container img {
+      width: 260px;
+      height: 260px;
+      display: block;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #e0e0e0;
+      border-top-color: #25d366;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .instructions {
+      color: #aaa;
+      font-size: 0.9rem;
+      line-height: 1.6;
+      margin-bottom: 1rem;
+    }
+
+    .instructions ol {
+      text-align: left;
+      display: inline-block;
+    }
+
+    .instructions li {
+      margin-bottom: 0.3rem;
+    }
+
+    .success {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .success .checkmark {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      background: #25d366;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.5rem;
+    }
+
+    .success h2 {
+      color: #25d366;
+      font-size: 1.4rem;
+    }
+
+    .success p {
+      color: #888;
+      font-size: 0.95rem;
+    }
+
+    #status {
+      color: #888;
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">Omi + WhatsApp</div>
+    <p class="subtitle">Connect your WhatsApp to receive meeting recaps</p>
+
+    <!-- QR code view -->
+    <div id="setup-view">
+      <div id="qr-container">
+        <div class="spinner" id="spinner"></div>
+        <img id="qr-img" src="" alt="QR Code" style="display: none;" />
+      </div>
+
+      <div class="instructions">
+        <ol>
+          <li>Open WhatsApp on your phone</li>
+          <li>Tap <strong>Menu</strong> or <strong>Settings</strong> → <strong>Linked Devices</strong></li>
+          <li>Tap <strong>Link a Device</strong></li>
+          <li>Scan this QR code</li>
+        </ol>
+      </div>
+      <div id="status">Generating QR code...</div>
+    </div>
+
+    <!-- Success view -->
+    <div class="success" id="success-view">
+      <div class="checkmark">✓</div>
+      <h2>WhatsApp Connected!</h2>
+      <p>You're all set. Meeting recaps will now be sent to your WhatsApp.<br />You can close this page.</p>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      // Extract uid from the current page URL
+      const params = new URLSearchParams(window.location.search);
+      const uid = params.get('uid');
+      if (!uid) {
+        document.getElementById('status').textContent = 'Error: missing uid parameter';
+        return;
+      }
+
+      const qrImg = document.getElementById('qr-img');
+      const spinner = document.getElementById('spinner');
+      const setupView = document.getElementById('setup-view');
+      const successView = document.getElementById('success-view');
+      const statusEl = document.getElementById('status');
+
+      // Connect to SSE events
+      const evtSource = new EventSource(`/setup/events?uid=${encodeURIComponent(uid)}`);
+
+      evtSource.addEventListener('qr', function (e) {
+        qrImg.src = e.data;
+        qrImg.style.display = 'block';
+        spinner.style.display = 'none';
+        statusEl.textContent = 'Scan the QR code with WhatsApp';
+      });
+
+      evtSource.addEventListener('connected', function () {
+        setupView.style.display = 'none';
+        successView.style.display = 'flex';
+        evtSource.close();
+      });
+
+      evtSource.addEventListener('disconnected', function () {
+        statusEl.textContent = 'Disconnected. Reconnecting...';
+        spinner.style.display = 'block';
+        qrImg.style.display = 'none';
+      });
+
+      evtSource.onerror = function () {
+        statusEl.textContent = 'Connection lost. Refresh to retry.';
+      };
+    })();
+  </script>
+</body>
+</html>
