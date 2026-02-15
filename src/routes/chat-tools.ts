@@ -1,9 +1,10 @@
 /**
  * Chat Tools routes — Omi chat tool manifest and tool endpoints.
  *
- * GET  /.well-known/omi-tools.json → Tool manifest for Omi to discover available tools
- * POST /tools/send_message         → Send a WhatsApp message to a contact
- * POST /tools/send_meeting_notes   → Send meeting notes to self on WhatsApp
+ * GET  /.well-known/omi-tools.json    → Tool manifest for Omi to discover available tools
+ * POST /tools/send_message            → Send a WhatsApp message to a contact
+ * POST /tools/send_meeting_notes      → Send meeting notes to self on WhatsApp
+ * POST /tools/send_recap_to_contact   → Send meeting recap to a specific contact
  *
  * These endpoints follow the Omi Chat Tools spec:
  * https://docs.omi.me/doc/developer/apps/ChatTools
@@ -69,6 +70,28 @@ function buildManifest(baseUrl: string) {
         },
         auth_required: true,
         status_message: 'Sending meeting notes to WhatsApp...',
+      },
+      {
+        name: 'send_recap_to_contact',
+        description:
+          'Send meeting notes, conversation recap, or summary to a specific WhatsApp contact. Use this when the user says "send the meeting notes to John on WhatsApp", "share the recap with Sarah", "forward the summary to Mom on WhatsApp", or "send today\'s notes to my manager".',
+        endpoint: `${baseUrl}/tools/send_recap_to_contact`,
+        method: 'POST',
+        parameters: {
+          properties: {
+            contact_name: {
+              type: 'string',
+              description: 'The name of the contact to send the recap to (e.g., "John", "Mom", "Sarah")',
+            },
+            summary: {
+              type: 'string',
+              description: 'The meeting notes or conversation summary text to send',
+            },
+          },
+          required: ['contact_name', 'summary'],
+        },
+        auth_required: true,
+        status_message: 'Sending recap to contact on WhatsApp...',
       },
     ],
   };
@@ -174,5 +197,61 @@ toolsRouter.post('/send_meeting_notes', async (req, res) => {
   } catch (err) {
     logger.error({ uid, err }, 'Chat tool: failed to send meeting notes');
     res.status(500).json({ error: 'Failed to send meeting notes. Please try again.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /tools/send_recap_to_contact
+// ---------------------------------------------------------------------------
+toolsRouter.post('/send_recap_to_contact', async (req, res) => {
+  const data = req.body;
+
+  const uid = data?.uid || (req.query.uid as string);
+  const contactName = data?.contact_name;
+  const summary = data?.summary;
+
+  if (!uid) {
+    res.status(400).json({ error: 'Missing uid parameter' });
+    return;
+  }
+  if (!contactName) {
+    res.status(400).json({ error: 'Missing required parameter: contact_name' });
+    return;
+  }
+  if (!summary) {
+    res.status(400).json({ error: 'Missing required parameter: summary' });
+    return;
+  }
+
+  if (!isConnected(uid)) {
+    res.status(401).json({
+      error: 'WhatsApp not connected. Please link your WhatsApp account first in the app setup.',
+    });
+    return;
+  }
+
+  // Wait for contacts to be available
+  const hasCtx = await waitForContacts(uid, 5, 1000);
+  if (!hasCtx) {
+    res.status(500).json({ error: 'Contacts not synced yet. Please try again in a moment.' });
+    return;
+  }
+
+  const contacts = getContacts(uid);
+  const match = findContact(contacts, contactName);
+
+  if (!match) {
+    res.status(404).json({ error: `Could not find a WhatsApp contact named "${contactName}". Check the spelling or use their saved name.` });
+    return;
+  }
+
+  try {
+    const formatted = `📋 *Meeting Notes from Omi*\n\n${summary}`;
+    await sendMessage(uid, match.jid, formatted);
+    logger.info({ uid, contact: match.displayName, jid: match.jid }, 'Chat tool: recap sent to contact');
+    res.json({ result: `Meeting recap sent to ${match.displayName} on WhatsApp.` });
+  } catch (err) {
+    logger.error({ uid, contactName, err }, 'Chat tool: failed to send recap to contact');
+    res.status(500).json({ error: `Failed to send recap to ${match.displayName}. Please try again.` });
   }
 });
