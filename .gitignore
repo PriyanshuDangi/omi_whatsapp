@@ -1,0 +1,6 @@
+node_modules/
+dist/
+sessions/
+.env
+auth_info*/
+*.js.map
