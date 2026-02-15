@@ -4,12 +4,23 @@
  */
 
 export interface TranscriptSegment {
+  id?: string;
   text: string;
   speaker: string;
-  speakerId: number;
+  speaker_id: number;
   is_user: boolean;
+  person_id?: string | null;
   start: number;
   end: number;
+  translations?: unknown[];
+  speech_profile_processed?: boolean;
+  stt_provider?: string | null;
+}
+
+/** Omi wraps realtime transcript in this envelope */
+export interface RealtimePayload {
+  session_id: string;
+  segments: TranscriptSegment[];
 }
 
 export interface ActionItem {

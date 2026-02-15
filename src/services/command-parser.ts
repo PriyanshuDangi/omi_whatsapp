@@ -11,21 +11,23 @@ export interface ParsedCommand {
 /**
  * Regex patterns for voice command detection (case-insensitive).
  *
+ * Supported separators between name and content: "saying", "asking", ":", "that"
+ *
  * Supported patterns:
- *   - "send message to {name}: {content}"
- *   - "send message to {name} saying {content}"
- *   - "send a message to {name}: {content}"
- *   - "message {name}: {content}"
- *   - "text {name}: {content}"
- *   - "whatsapp {name}: {content}"
+ *   - "send message to {name} saying/asking/: {content}"
+ *   - "send a message to {name} saying/asking/: {content}"
+ *   - "message {name} saying/asking/: {content}"
+ *   - "text {name} saying/asking/: {content}"
+ *   - "whatsapp {name} saying/asking/: {content}"
  *
  * Each regex captures two groups: (1) name, (2) content.
  */
+const SEP = '(?:saying|asking|that|:)';
 const COMMAND_PATTERNS: RegExp[] = [
-  /send\s+(?:a\s+)?message\s+to\s+(.+?)\s*(?:saying|:)\s*(.+)/i,
-  /^message\s+(.+?)\s*(?:saying|:)\s*(.+)/i,
-  /^text\s+(.+?)\s*(?:saying|:)\s*(.+)/i,
-  /^whatsapp\s+(.+?)\s*(?:saying|:)\s*(.+)/i,
+  new RegExp(`send\\s+(?:a\\s+)?message\\s+to\\s+(.+?)\\s*${SEP}\\s*(.+)`, 'i'),
+  new RegExp(`^message\\s+(.+?)\\s*${SEP}\\s*(.+)`, 'i'),
+  new RegExp(`^text\\s+(.+?)\\s*${SEP}\\s*(.+)`, 'i'),
+  new RegExp(`^whatsapp\\s+(.+?)\\s*${SEP}\\s*(.+)`, 'i'),
 ];
 
 /**
