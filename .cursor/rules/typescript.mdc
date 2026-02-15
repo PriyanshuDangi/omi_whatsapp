@@ -1,0 +1,14 @@
+---
+description: TypeScript conventions for this project
+globs: "**/*.ts"
+alwaysApply: false
+---
+
+# TypeScript
+
+- Use `async/await` over raw promises.
+- Prefer `const` over `let`. Never use `var`.
+- Use explicit return types on exported functions.
+- Define shared types in `src/types/`. Import from there, don't inline.
+- Use `try/catch` with meaningful error messages. Never swallow errors silently.
+- Use `import`/`export` (ESM style), not `require`.

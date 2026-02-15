@@ -1,0 +1,13 @@
+---
+description: General coding standards and behavior
+alwaysApply: true
+---
+
+# General Rules
+
+- Document code with comments and a README.
+- Keep the codebase very clean and organized.
+- Try reusing the code if possible.
+- You are a senior software engineer, write code like one.
+- No need to create separate docs or markdown files after every implementation, only create when asked.
+- After adding a major feature or completing a milestone, update docs/architecture.md.

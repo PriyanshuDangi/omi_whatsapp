@@ -4,7 +4,7 @@
 
 | Component | Technology | Version |
 |-----------|-----------|---------|
-| Runtime | Node.js | 20 LTS |
+| Runtime | Node.js | 22 LTS |
 | Language | TypeScript | ^5.5 |
 | Dev runner | tsx | ^4.19 |
 
