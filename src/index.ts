@@ -10,6 +10,7 @@ import path from 'path';
 import pino from 'pino';
 import { setupRouter } from './routes/setup.js';
 import { webhookRouter } from './routes/webhook.js';
+import { manifestRouter, toolsRouter } from './routes/chat-tools.js';
 import { initSession, getContacts } from './services/whatsapp.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
@@ -42,6 +43,9 @@ app.get('/debug/contacts', (req, res) => {
 // Mount routes
 app.use('/setup', setupRouter);
 app.use('/webhook', webhookRouter);
+app.use('/.well-known', manifestRouter);
+app.use('/tools', toolsRouter);
+app.use('/setup/tools', toolsRouter); // Omi resolves relative to App Home URL (/setup)
 
 // Auto-restore existing WhatsApp sessions from filesystem on startup
 function restoreSessions(): void {
