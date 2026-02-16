@@ -66,8 +66,8 @@ webhookRouter.post('/memory', (req, res) => {
   // Process asynchronously
   const memory = req.body as OmiMemory;
 
-  console.log('[MEMORY WEBHOOK] uid:', uid);
-  console.log('[MEMORY WEBHOOK] raw body:', JSON.stringify(req.body, null, 2));
+  logger.debug({ uid }, 'Memory webhook received');
+  logger.debug({ uid, body: req.body }, 'Memory webhook raw body');
 
   // Skip discarded or empty memories
   if (memory.discarded) {
@@ -119,13 +119,13 @@ webhookRouter.post('/realtime', (req, res) => {
     segments = body.segments;
     sessionId = body.session_id || (req.query.session_id as string);
   } else {
-    console.log('[REALTIME WEBHOOK] unexpected body format:', JSON.stringify(body, null, 2));
+    logger.debug({ uid, body }, 'Realtime webhook unexpected body format');
     return;
   }
 
-  console.log('[REALTIME WEBHOOK] uid:', uid, 'sessionId:', sessionId, 'segments:', segments.length);
+  logger.debug({ uid, sessionId, segmentCount: segments.length }, 'Realtime webhook received');
   for (const seg of segments) {
-    console.log(`  [${seg.speaker}] "${seg.text}"`);
+    logger.debug({ speaker: seg.speaker, text: seg.text }, 'Realtime segment');
   }
 
   if (segments.length === 0) return;
@@ -185,12 +185,12 @@ webhookRouter.post('/realtime', (req, res) => {
   // Command found — clear partial buffer
   sessionText.set(sessionId, '');
 
-  console.log('[REALTIME] command detected:', command);
+  logger.debug({ uid, command }, 'Realtime command detected');
 
   // Dedup: avoid re-sending the same command in this session
   const commandKey = `${command.name.toLowerCase()}:${command.content.toLowerCase()}`;
   if (sentCommands.has(commandKey)) {
-    console.log('[REALTIME] command already processed — skipping');
+    logger.debug({ uid, commandKey }, 'Command already processed — skipping');
     return;
   }
   sentCommands.add(commandKey);
@@ -208,7 +208,7 @@ webhookRouter.post('/realtime', (req, res) => {
 async function waitForConnection(uid: string, retries = 5, delayMs = 2000): Promise<boolean> {
   for (let i = 0; i < retries; i++) {
     if (isConnected(uid)) return true;
-    console.log(`[REALTIME] WhatsApp not connected yet, waiting... (${i + 1}/${retries})`);
+    logger.debug({ uid, attempt: i + 1, retries }, 'WhatsApp not connected yet, waiting');
     await new Promise((r) => setTimeout(r, delayMs));
   }
   return isConnected(uid);
@@ -237,18 +237,12 @@ async function processVoiceCommand(
   // Wait for contacts to sync (they arrive after history sync, which can take 20s+)
   const hasCtx = await waitForContacts(uid);
   if (!hasCtx) {
-    console.log('[CONTACTS] No contacts synced — cannot look up name');
+    logger.debug({ uid }, 'No contacts synced — cannot look up name');
   }
 
   const contacts = getContacts(uid);
 
-  // Debug: log all contacts so we can see what names are available
-  console.log(`[CONTACTS] Looking for "${name}" among ${contacts.size} contacts:`);
-  for (const [jid, c] of contacts) {
-    if (c.name || c.notify || c.verifiedName) {
-      console.log(`  ${jid} → name="${c.name}" notify="${c.notify}" verified="${c.verifiedName}"`);
-    }
-  }
+  logger.debug({ uid, name, contactCount: contacts.size }, 'Looking up contact for voice command');
 
   const match = findContact(contacts, name);
 

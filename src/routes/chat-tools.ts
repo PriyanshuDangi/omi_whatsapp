@@ -132,8 +132,8 @@ export const toolsRouter = Router();
 // GET /.well-known/omi-tools.json
 // ---------------------------------------------------------------------------
 manifestRouter.get('/omi-tools.json', (req, res) => {
-  // Use NGROK_URL if set, otherwise derive from the request
-  const baseUrl = process.env.NGROK_URL || `${req.protocol}://${req.get('host')}`;
+  // Use BASE_URL if set, otherwise derive from the request
+  const baseUrl = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
   res.json(buildManifest(baseUrl));
 });
 

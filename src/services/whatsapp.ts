@@ -32,9 +32,9 @@ function persistContacts(uid: string): void {
   try {
     const data = Object.fromEntries(store);
     fs.writeFileSync(contactsCachePath(uid), JSON.stringify(data), 'utf-8');
-    console.log(`[WHATSAPP] Persisted ${store.size} contacts to disk for uid: ${uid}`);
+    logger.debug({ uid, count: store.size }, 'Persisted contacts to disk');
   } catch (err) {
-    console.error(`[WHATSAPP] Failed to persist contacts for uid: ${uid}`, err);
+    logger.error({ uid, err }, 'Failed to persist contacts to disk');
   }
 }
 
@@ -49,9 +49,9 @@ function loadCachedContacts(uid: string): void {
       store.set(jid, contact as Contact);
     }
     contactStore.set(uid, store);
-    console.log(`[WHATSAPP] Loaded ${store.size} cached contacts from disk for uid: ${uid}`);
+    logger.debug({ uid, count: store.size }, 'Loaded cached contacts from disk');
   } catch (err) {
-    console.error(`[WHATSAPP] Failed to load cached contacts for uid: ${uid}`, err);
+    logger.error({ uid, err }, 'Failed to load cached contacts from disk');
   }
 }
 
@@ -170,7 +170,7 @@ export async function initSession(uid: string): Promise<void> {
     for (const contact of contacts) {
       store.set(contact.id, contact);
     }
-    console.log(`[WHATSAPP] Contacts synced from history: ${contacts.length} (total: ${store.size}) for uid: ${uid}`);
+    logger.debug({ uid, synced: contacts.length, total: store.size }, 'Contacts synced from history');
     persistContacts(uid);
   });
 
@@ -180,7 +180,7 @@ export async function initSession(uid: string): Promise<void> {
     for (const contact of contacts) {
       store.set(contact.id, contact);
     }
-    console.log(`[WHATSAPP] Contacts upserted: ${contacts.length} (total: ${store.size}) for uid: ${uid}`);
+    logger.debug({ uid, upserted: contacts.length, total: store.size }, 'Contacts upserted');
     persistContacts(uid);
   });
 
@@ -250,7 +250,7 @@ export function hasContacts(uid: string): boolean {
 export async function waitForContacts(uid: string, retries = 10, delayMs = 2000): Promise<boolean> {
   for (let i = 0; i < retries; i++) {
     if (hasContacts(uid)) return true;
-    console.log(`[WHATSAPP] Waiting for contacts to sync... (${i + 1}/${retries})`);
+    logger.debug({ uid, attempt: i + 1, retries }, 'Waiting for contacts to sync');
     await new Promise((r) => setTimeout(r, delayMs));
   }
   return hasContacts(uid);
