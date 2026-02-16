@@ -8,11 +8,13 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import pino from 'pino';
+import rateLimit from 'express-rate-limit';
 import { setupRouter } from './routes/setup.js';
 import { webhookRouter } from './routes/webhook.js';
 import { manifestRouter, toolsRouter } from './routes/chat-tools.js';
-import { initSession, getContacts } from './services/whatsapp.js';
+import { initSession } from './services/whatsapp.js';
 import { startReminderTick } from './services/reminder.js';
+import { sanitizeUid } from './utils/sanitize.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -22,33 +24,83 @@ const app = express();
 // Parse JSON bodies (Omi webhook payloads)
 app.use(express.json());
 
+// ---------------------------------------------------------------------------
+// Rate limiting
+// ---------------------------------------------------------------------------
+const globalLimiter = rateLimit({ windowMs: 60_000, max: 100 });
+const toolsLimiter = rateLimit({ windowMs: 60_000, max: 20 });
+const webhookLimiter = rateLimit({ windowMs: 60_000, max: 60 });
+
+app.use(globalLimiter);
+app.use('/tools', toolsLimiter);
+app.use('/setup/tools', toolsLimiter);
+app.use('/webhook', webhookLimiter);
+
+// ---------------------------------------------------------------------------
+// UID sanitization middleware (must come after express.json for req.body)
+// ---------------------------------------------------------------------------
+app.use((req, res, next) => {
+  const uid = (req.query.uid as string) || req.body?.uid;
+  if (uid && !sanitizeUid(uid)) {
+    res.status(400).json({ error: 'Invalid uid format' });
+    return;
+  }
+  next();
+});
+
+// ---------------------------------------------------------------------------
+// Webhook auth — verify OMI_APP_SECRET (skipped in dev when not set)
+// ---------------------------------------------------------------------------
+app.use('/webhook', (req, res, next) => {
+  const secret = process.env.OMI_APP_SECRET;
+  if (!secret) return next(); // dev mode, no auth
+  const auth = req.headers.authorization;
+  if (auth !== `Bearer ${secret}`) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  next();
+});
+
+// ---------------------------------------------------------------------------
+// Chat tool session validation — uid must have a known session
+// ---------------------------------------------------------------------------
+app.use('/tools', (req, res, next) => {
+  const uid = (req.query.uid as string) || req.body?.uid;
+  if (uid && !fs.existsSync(path.join('sessions', uid))) {
+    res.status(403).json({ error: 'Unknown session. Please set up WhatsApp first.' });
+    return;
+  }
+  next();
+});
+app.use('/setup/tools', (req, res, next) => {
+  const uid = (req.query.uid as string) || req.body?.uid;
+  if (uid && !fs.existsSync(path.join('sessions', uid))) {
+    res.status(403).json({ error: 'Unknown session. Please set up WhatsApp first.' });
+    return;
+  }
+  next();
+});
+
+// ---------------------------------------------------------------------------
 // Health check
+// ---------------------------------------------------------------------------
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Debug: list contacts for a uid
-app.get('/debug/contacts', (req, res) => {
-  const uid = req.query.uid as string;
-  if (!uid) { res.status(400).json({ error: 'Missing uid' }); return; }
-  const contacts = getContacts(uid);
-  const list = Array.from(contacts.entries()).map(([jid, c]) => ({
-    jid,
-    name: c.name,
-    notify: c.notify,
-    verifiedName: c.verifiedName,
-  }));
-  res.json({ count: list.length, contacts: list });
-});
-
+// ---------------------------------------------------------------------------
 // Mount routes
+// ---------------------------------------------------------------------------
 app.use('/setup', setupRouter);
 app.use('/webhook', webhookRouter);
 app.use('/.well-known', manifestRouter);
 app.use('/tools', toolsRouter);
 app.use('/setup/tools', toolsRouter); // Omi resolves relative to App Home URL (/setup)
 
+// ---------------------------------------------------------------------------
 // Auto-restore existing WhatsApp sessions from filesystem on startup
+// ---------------------------------------------------------------------------
 function restoreSessions(): void {
   const sessionsDir = 'sessions';
   if (!fs.existsSync(sessionsDir)) return;
@@ -58,18 +110,20 @@ function restoreSessions(): void {
   });
 
   for (const uid of uids) {
-    console.log(`  Restoring WhatsApp session for uid: ${uid}`);
+    logger.info({ uid }, 'Restoring WhatsApp session');
     initSession(uid).catch((err) => {
       logger.error({ uid, err }, 'Failed to restore WhatsApp session');
     });
   }
 
   if (uids.length > 0) {
-    console.log(`  Restored ${uids.length} session(s)`);
+    logger.info({ count: uids.length }, 'Sessions restored');
   }
 }
 
+// ---------------------------------------------------------------------------
 // Start server
+// ---------------------------------------------------------------------------
 app.listen(PORT, () => {
   logger.info({ port: PORT }, 'Server started');
   console.log(`\n  Omi WhatsApp Integration`);
@@ -79,8 +133,7 @@ app.listen(PORT, () => {
   console.log(`  Setup status:  http://localhost:${PORT}/setup/status?uid=test`);
   console.log(`  Memory hook:   POST http://localhost:${PORT}/webhook/memory?uid=test`);
   console.log(`  Realtime hook: POST http://localhost:${PORT}/webhook/realtime?uid=test&session_id=s1`);
-  console.log(`\n  Tip: Use ngrok to expose this to Omi webhooks:`);
-  console.log(`  ngrok http ${PORT}\n`);
+  console.log('');
 
   // Restore sessions after server is listening
   restoreSessions();
