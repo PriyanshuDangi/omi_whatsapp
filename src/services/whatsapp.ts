@@ -7,6 +7,7 @@ import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
   type Contact,
+  type AuthenticationState,
 } from '@whiskeysockets/baileys';
 import type { Boom } from '@hapi/boom';
 import fs from 'fs';
@@ -90,6 +91,47 @@ export function subscribe(uid: string, cb: SessionEventCallback): () => void {
   };
 }
 
+/**
+ * Wraps useMultiFileAuthState to automatically delete pre-key files after
+ * they've been uploaded to WhatsApp. Baileys never cleans these up itself,
+ * so without this they accumulate indefinitely (100+ files per session).
+ */
+async function useMultiFileAuthStateWithCleanup(
+  folder: string,
+): Promise<{ state: AuthenticationState; saveCreds: () => Promise<void> }> {
+  const { state, saveCreds } = await useMultiFileAuthState(folder);
+
+  const originalSet = state.keys.set.bind(state.keys);
+  state.keys.set = (data) => {
+    originalSet(data);
+
+    // After pre-keys are written, clean up keys below firstUnuploadedPreKeyId —
+    // those have already been uploaded to WhatsApp and will never be used again.
+    const firstUnuploaded = state.creds.firstUnuploadedPreKeyId ?? 0;
+    if (firstUnuploaded > 1) {
+      // Run cleanup asynchronously so it doesn't block the auth flow
+      setImmediate(() => {
+        try {
+          const files = fs.readdirSync(folder);
+          for (const file of files) {
+            const match = file.match(/^pre-key-(\d+)\.json$/);
+            if (match) {
+              const keyId = parseInt(match[1]!, 10);
+              if (keyId < firstUnuploaded) {
+                fs.unlinkSync(path.join(folder, file));
+              }
+            }
+          }
+        } catch {
+          // Non-fatal — next cleanup cycle will catch leftovers
+        }
+      });
+    }
+  };
+
+  return { state, saveCreds };
+}
+
 /** Initialize (or re-initialize) a Baileys session for the given uid. */
 export async function initSession(uid: string): Promise<void> {
   // If already connected, skip
@@ -98,7 +140,7 @@ export async function initSession(uid: string): Promise<void> {
     return;
   }
 
-  const { state, saveCreds } = await useMultiFileAuthState(`sessions/${uid}`);
+  const { state, saveCreds } = await useMultiFileAuthStateWithCleanup(`sessions/${uid}`);
 
   const socket = makeWASocket({
     auth: state,
