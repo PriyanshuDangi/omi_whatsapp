@@ -8,7 +8,6 @@ import express from 'express';
 import fs from 'fs';
 import path from 'path';
 import pino from 'pino';
-import rateLimit from 'express-rate-limit';
 import { setupRouter } from './routes/setup.js';
 import { webhookRouter } from './routes/webhook.js';
 import { manifestRouter, toolsRouter } from './routes/chat-tools.js';
@@ -23,18 +22,6 @@ const app = express();
 
 // Parse JSON bodies (Omi webhook payloads)
 app.use(express.json());
-
-// ---------------------------------------------------------------------------
-// Rate limiting
-// ---------------------------------------------------------------------------
-const globalLimiter = rateLimit({ windowMs: 60_000, max: 100 });
-const toolsLimiter = rateLimit({ windowMs: 60_000, max: 20 });
-const webhookLimiter = rateLimit({ windowMs: 60_000, max: 60 });
-
-app.use(globalLimiter);
-app.use('/tools', toolsLimiter);
-app.use('/setup/tools', toolsLimiter);
-app.use('/webhook', webhookLimiter);
 
 // ---------------------------------------------------------------------------
 // UID sanitization middleware (must come after express.json for req.body)
