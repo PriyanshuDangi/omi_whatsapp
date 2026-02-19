@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Omi WhatsApp Integration
 
-A production app live on the Omi App Store. It sends WhatsApp meeting recaps and handles voice-triggered messaging via Omi wearable integrations.
+A production app live on the Omi App Store. It sends WhatsApp meeting recaps and lets users send messages to contacts via Omi's AI chat tools.
 
 ## Key Docs
 
@@ -33,10 +33,13 @@ A production app live on the Omi App Store. It sends WhatsApp meeting recaps and
 - `GET /setup` — QR code page for WhatsApp linking
 - `GET /setup/status` — returns `{is_setup_completed: bool}` for Omi polling
 - `POST /webhook/memory` — receives Omi memory, sends WhatsApp recap
-- `POST /webhook/realtime` — receives live transcript, detects voice commands
+- `POST /tools/send_message` — Omi chat tool: send a WhatsApp message to a contact
+- `POST /tools/send_recap_to_contact` — Omi chat tool: send meeting recap to a contact
+- `POST /tools/send_meeting_notes` — Omi chat tool: send meeting notes to self
+- `POST /tools/set_reminder` — Omi chat tool: schedule a WhatsApp reminder
 
 ## Edge Cases to Always Handle
 
 - Skip discarded memories (`discarded: true`)
-- Deduplicate real-time transcript segments by `session_id`
 - Gracefully handle missing WhatsApp sessions (user not linked yet)
+- Chat tools return JSON — use descriptive error messages Omi's LLM can relay to the user
