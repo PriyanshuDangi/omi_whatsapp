@@ -160,7 +160,10 @@ toolsRouter.post('/send_message', async (req, res) => {
     return;
   }
 
+  logger.debug({ uid, contactName, message }, 'Chat tool: send_message request received');
+
   if (!isConnected(uid)) {
+    logger.warn({ uid }, 'Chat tool: send_message — WhatsApp not connected');
     res.status(401).json({
       error: 'WhatsApp not connected. Please link your WhatsApp account first in the app setup.',
     });
@@ -170,6 +173,7 @@ toolsRouter.post('/send_message', async (req, res) => {
   // Wait for contacts to be available
   const hasCtx = await waitForContacts(uid, 5, 1000);
   if (!hasCtx) {
+    logger.warn({ uid }, 'Chat tool: send_message — contacts not synced');
     res.status(500).json({ error: 'Contacts not synced yet. Please try again in a moment.' });
     return;
   }
@@ -177,7 +181,10 @@ toolsRouter.post('/send_message', async (req, res) => {
   const contacts = getContacts(uid);
   const match = findContact(contacts, contactName);
 
+  logger.debug({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
+
   if (!match) {
+    logger.warn({ uid, contactName }, 'Chat tool: send_message — contact not found');
     res.status(404).json({ error: `Could not find a WhatsApp contact named "${contactName}". Check the spelling or use their saved name.` });
     return;
   }
@@ -210,7 +217,10 @@ toolsRouter.post('/send_meeting_notes', async (req, res) => {
     return;
   }
 
+  logger.debug({ uid, summaryLength: summary.length }, 'Chat tool: send_meeting_notes request received');
+
   if (!isConnected(uid)) {
+    logger.warn({ uid }, 'Chat tool: send_meeting_notes — WhatsApp not connected');
     res.status(401).json({
       error: 'WhatsApp not connected. Please link your WhatsApp account first in the app setup.',
     });
@@ -251,7 +261,10 @@ toolsRouter.post('/send_recap_to_contact', async (req, res) => {
     return;
   }
 
+  logger.debug({ uid, contactName, summaryLength: summary.length }, 'Chat tool: send_recap_to_contact request received');
+
   if (!isConnected(uid)) {
+    logger.warn({ uid }, 'Chat tool: send_recap_to_contact — WhatsApp not connected');
     res.status(401).json({
       error: 'WhatsApp not connected. Please link your WhatsApp account first in the app setup.',
     });
@@ -261,6 +274,7 @@ toolsRouter.post('/send_recap_to_contact', async (req, res) => {
   // Wait for contacts to be available
   const hasCtx = await waitForContacts(uid, 5, 1000);
   if (!hasCtx) {
+    logger.warn({ uid }, 'Chat tool: send_recap_to_contact — contacts not synced');
     res.status(500).json({ error: 'Contacts not synced yet. Please try again in a moment.' });
     return;
   }
@@ -268,7 +282,10 @@ toolsRouter.post('/send_recap_to_contact', async (req, res) => {
   const contacts = getContacts(uid);
   const match = findContact(contacts, contactName);
 
+  logger.debug({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
+
   if (!match) {
+    logger.warn({ uid, contactName }, 'Chat tool: send_recap_to_contact — contact not found');
     res.status(404).json({ error: `Could not find a WhatsApp contact named "${contactName}". Check the spelling or use their saved name.` });
     return;
   }
@@ -308,7 +325,10 @@ toolsRouter.post('/set_reminder', async (req, res) => {
     return;
   }
 
+  logger.debug({ uid, message, delayMinutes, contactName: contactName ?? null }, 'Chat tool: set_reminder request received');
+
   if (!isConnected(uid)) {
+    logger.warn({ uid }, 'Chat tool: set_reminder — WhatsApp not connected');
     res.status(401).json({
       error: 'WhatsApp not connected. Please link your WhatsApp account first in the app setup.',
     });
@@ -322,6 +342,7 @@ toolsRouter.post('/set_reminder', async (req, res) => {
   if (contactName) {
     const hasCtx = await waitForContacts(uid, 5, 1000);
     if (!hasCtx) {
+      logger.warn({ uid }, 'Chat tool: set_reminder — contacts not synced');
       res.status(500).json({ error: 'Contacts not synced yet. Please try again in a moment.' });
       return;
     }
@@ -329,7 +350,10 @@ toolsRouter.post('/set_reminder', async (req, res) => {
     const contacts = getContacts(uid);
     const match = findContact(contacts, contactName);
 
+    logger.debug({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
+
     if (!match) {
+      logger.warn({ uid, contactName }, 'Chat tool: set_reminder — contact not found');
       res.status(404).json({ error: `Could not find a WhatsApp contact named "${contactName}". Check the spelling or use their saved name.` });
       return;
     }
