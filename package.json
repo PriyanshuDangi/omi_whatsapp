@@ -10,17 +10,18 @@
   },
   "dependencies": {
     "@whiskeysockets/baileys": "latest",
-    "express": "^4.21.0",
-    "qrcode": "^1.5.4",
     "dotenv": "^16.4.7",
+    "express": "^4.21.0",
+    "express-rate-limit": "^7.5.0",
+    "fastest-levenshtein": "^1.0.16",
     "pino": "^9.6.0",
-    "express-rate-limit": "^7.5.0"
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
-    "typescript": "^5.5.0",
-    "tsx": "^4.19.0",
     "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
     "@types/qrcode": "^1.5.0",
-    "@types/node": "^22.0.0"
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
   }
 }
