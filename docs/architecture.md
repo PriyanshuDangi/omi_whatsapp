@@ -9,14 +9,13 @@ src/
 ├── index.ts                  # Entry point — Express app, route mounting, startup
 ├── routes/
 │   ├── setup.ts              # GET /setup, GET /setup/status, GET /setup/events (SSE)
-│   ├── webhook.ts            # POST /webhook/memory, POST /webhook/realtime
-│   └── chat-tools.ts         # GET /.well-known/omi-tools.json, POST /tools/send_message, POST /tools/send_meeting_notes
+│   ├── webhook.ts            # POST /webhook/memory
+│   └── chat-tools.ts         # GET /.well-known/omi-tools.json, POST /tools/*
 ├── services/
 │   ├── whatsapp.ts           # Baileys connection lifecycle, QR, messaging, contacts
 │   ├── formatter.ts          # Omi memory → WhatsApp recap message
-│   ├── command-parser.ts     # Regex detection of "send message to X" voice commands
-│   ├── contact-matcher.ts    # Fuzzy name → WhatsApp JID matching
-│   └── notification.ts       # Omi notification API client (deferred)
+│   ├── contact-matcher.ts    # Scored fuzzy name → WhatsApp JID matching
+│   └── reminder.ts           # Timed WhatsApp reminder scheduler
 ├── types/
 │   ├── omi.ts                # OmiMemory, TranscriptSegment, ActionItem, Structured
 │   └── whatsapp.ts           # WhatsAppSession, SessionEvent types
@@ -37,17 +36,6 @@ Omi Backend
   → WhatsApp "Message Yourself" chat
 ```
 
-### Voice Command (Feature 2)
-
-```
-Omi Backend
-  → POST /webhook/realtime?uid=...&session_id=...
-  → webhook.ts: deduplicate segments by session_id + start time
-  → command-parser.ts: regex detect "send message to {name}: {content}"
-  → contact-matcher.ts: fuzzy match name against Baileys contacts
-  → whatsapp.ts: sendMessage() to matched JID
-```
-
 ### Setup / QR Linking
 
 ```
@@ -60,7 +48,7 @@ Omi app opens Auth URL
   → Omi polls GET /setup/status?uid=... → { is_setup_completed: true }
 ```
 
-### Chat Tools (Feature 3 — Omi AI-initiated)
+### Chat Tools (Feature 2 — Omi AI-initiated)
 
 ```
 User asks Omi AI: "Send a WhatsApp message to John saying hi"
@@ -86,7 +74,6 @@ User asks Omi AI: "Send me the meeting notes on WhatsApp"
 | Baileys auth credentials | Filesystem (`sessions/{uid}/`) | Persistent across restarts |
 | Active WhatsApp sockets | In-memory `Map<uid, WhatsAppSession>` | Process lifetime |
 | Contacts | In-memory `Map<uid, Map<jid, Contact>>` | Process lifetime, synced on connect |
-| Transcript dedup | In-memory `Map<session_id, Set<start>>` | Cleared every 30 min |
 | SSE listeners | In-memory `Map<uid, Set<callback>>` | Until browser disconnects |
 
 ## Key Design Decisions

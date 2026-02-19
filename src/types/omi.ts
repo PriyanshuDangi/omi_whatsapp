@@ -17,12 +17,6 @@ export interface TranscriptSegment {
   stt_provider?: string | null;
 }
 
-/** Omi wraps realtime transcript in this envelope */
-export interface RealtimePayload {
-  session_id: string;
-  segments: TranscriptSegment[];
-}
-
 export interface ActionItem {
   description: string;
   completed: boolean;

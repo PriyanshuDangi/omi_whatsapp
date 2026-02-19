@@ -53,7 +53,6 @@ No frontend framework. One HTML file.
 Everything lives in memory and filesystem for the MVP:
 
 - **Baileys auth** — filesystem (`sessions/{uid}/`)
-- **Dedup tracking** — in-memory Map keyed by `session_id` (tracks processed transcript segments)
 - **Contact lookup** — live from Baileys `store.contacts` on each request
 
 This keeps the MVP dead simple with zero database setup.
@@ -80,6 +79,7 @@ SQLite gets added later. Not needed for the hackathon demo.
   "dependencies": {
     "@whiskeysockets/baileys": "latest",
     "express": "^4.21",
+    "fastest-levenshtein": "^1.0",
     "qrcode": "^1.5",
     "dotenv": "^16.4",
     "pino": "^9.0"
@@ -113,13 +113,16 @@ SQLite gets added later. Not needed for the hackathon demo.
 
 ```
 Node.js + Express (TypeScript)
-├── POST /webhook/memory      ← Omi memory → format recap → Baileys → WhatsApp self-message
-├── POST /webhook/realtime    ← Omi transcript → regex detect → Baileys → WhatsApp contact message
-├── GET  /setup               ← Serve HTML → Baileys QR → SSE push to browser
-├── GET  /setup/status        ← Omi polls → check Baileys session → {is_setup_completed: bool}
+├── POST /webhook/memory          ← Omi memory → format recap → Baileys → WhatsApp self-message
+├── GET  /setup                   ← Serve HTML → Baileys QR → SSE push to browser
+├── GET  /setup/status            ← Omi polls → check Baileys session → {is_setup_completed: bool}
+├── GET  /.well-known/omi-tools.json  ← Chat tool manifest for Omi AI
+├── POST /tools/send_message      ← Omi AI → fuzzy match contact → Baileys → WhatsApp message
+├── POST /tools/send_recap_to_contact ← Omi AI → fuzzy match → Baileys → WhatsApp message
+├── POST /tools/send_meeting_notes    ← Omi AI → Baileys → WhatsApp self-message
+├── POST /tools/set_reminder          ← Omi AI → schedule timed WhatsApp reminder
 │
 ├── Baileys connection (persistent socket per uid)
-├── In-memory Maps (dedup state, session tracking)
 └── Filesystem (Baileys auth state)
 ```
 

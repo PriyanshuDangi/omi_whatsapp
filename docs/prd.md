@@ -2,7 +2,7 @@
 
 ## Overview
 
-An Omi integration app that connects your conversations to WhatsApp. After every conversation captured by Omi, you receive a clean, formatted meeting recap as a WhatsApp self-message. You can also say "send message to [name]: [content]" during any conversation, and the app will find the contact on WhatsApp and send the message on your behalf.
+An Omi integration app that connects your conversations to WhatsApp. After every conversation captured by Omi, you receive a clean, formatted meeting recap as a WhatsApp self-message. You can also ask Omi's AI to send messages, share meeting notes, or set reminders via WhatsApp using Omi's Chat Tools.
 
 **Track:** Track 1 — Omi App (Integration + Real-Time Notifications)
 
@@ -14,7 +14,7 @@ An Omi integration app that connects your conversations to WhatsApp. After every
 
 After meetings and conversations, important details — decisions, action items, promises — get lost. People rely on memory or manual note-taking. Omi captures everything, but the data stays inside the Omi app. There's no way to automatically push structured recaps to the messaging app you already live in: WhatsApp.
 
-Additionally, during conversations you often want to quickly message someone ("I'll send John the doc") but you can't without pulling out your phone, opening WhatsApp, finding the contact, and typing. By the time you do, you've lost the flow of conversation.
+Additionally, after conversations you often want to quickly message someone or share notes, but the friction of opening WhatsApp and typing breaks your flow. Omi's Chat Tools let you ask the AI to handle this hands-free.
 
 ---
 
@@ -24,7 +24,7 @@ Solo professional who:
 - Has frequent meetings, calls, or in-person conversations
 - Uses WhatsApp as their primary messaging app
 - Wants conversation recaps delivered automatically without any manual effort
-- Wants to send quick messages hands-free during conversations
+- Wants to send messages and share notes hands-free via Omi's AI
 
 ---
 
@@ -74,39 +74,35 @@ Solo professional who:
 
 ---
 
-### Feature 2: "Send Message to [Name]" Voice Command (MVP)
+### Feature 2: WhatsApp Chat Tools (MVP)
 
-**Trigger:** Omi Real-Time Transcript (live, during conversation)
+**Trigger:** User asks Omi's AI (e.g. "Send a WhatsApp message to John saying hi")
 
-**Flow:**
-1. User is in a conversation
-2. User says: "Send message to John: I'll have the proposal ready by Friday"
-3. Omi streams transcript segments to our webhook (`POST /webhook/realtime?uid=USER_ID&session_id=SESSION_ID`)
-4. Server detects the trigger phrase pattern: `send message to {name}: {content}` or `send message to {name} saying {content}`
-5. Server searches the user's WhatsApp contacts (via Baileys) for a match on `{name}`
-6. If match found: sends the message via Baileys to that contact
-7. Server returns a notification to Omi: "Message sent to John" (or "Contact not found: John")
+**Available tools:**
 
-**Trigger phrase patterns (case-insensitive):**
-- "send message to {name}: {content}"
-- "send message to {name} saying {content}"
-- "send a message to {name}: {content}"
-- "message {name}: {content}"
-- "text {name}: {content}"
-- "whatsapp {name}: {content}"
+| Tool | Endpoint | What it does |
+|------|----------|--------------|
+| `send_whatsapp_message` | `POST /tools/send_message` | Send a message to a named contact |
+| `send_recap_to_contact` | `POST /tools/send_recap_to_contact` | Send meeting recap to a contact |
+| `send_meeting_notes` | `POST /tools/send_meeting_notes` | Send notes to yourself |
+| `set_reminder` | `POST /tools/set_reminder` | Schedule a WhatsApp reminder |
+
+**Flow (example: "Send a WhatsApp to John saying hi"):**
+1. Omi's AI reads the tool manifest from `GET /.well-known/omi-tools.json`
+2. Omi calls `POST /tools/send_message { uid, contact_name: "John", message: "hi" }`
+3. Server fuzzy-matches "John" against Baileys contacts
+4. If match found: sends message via Baileys, returns `{ result: "Message sent to John on WhatsApp." }`
+5. Omi's AI relays the result back to the user
 
 **Contact matching logic:**
-1. Normalize the name (lowercase, trim)
-2. Search WhatsApp contacts via Baileys `store.contacts`
-3. Match by first name, full name, or saved name (fuzzy match)
-4. If multiple matches, pick the best match (exact > starts with > contains)
-5. If no match, return error notification to user
+- Normalize both query and variants (lowercase, strip diacritics and punctuation)
+- Score each candidate: exact (100) > first-name (85) > token-overlap (70) > starts-with (60) > contains (40) > fuzzy/Levenshtein (20)
+- Return the highest-scoring match; return 404 if no match found
 
 **Edge cases:**
-- Duplicate names: pick the most recently messaged contact
-- No match: send Omi notification "Could not find contact: {name}"
-- Empty message body: send Omi notification "No message content detected"
-- Prevent re-triggering: track processed segments by `session_id` to avoid sending duplicates
+- No match: return 404 with a descriptive error Omi's AI can relay ("Could not find a contact named X")
+- WhatsApp not connected: return 503 with setup instructions
+- Unknown session: return 403 before reaching the handler
 
 ---
 
@@ -140,9 +136,8 @@ When submitting the app on Omi:
 | **App Name** | WhatsApp |
 | **Description** | Get meeting recaps on WhatsApp automatically. Send messages to anyone by voice during conversations. |
 | **Category** | Integration Apps |
-| **Capabilities** | `external_integration` |
+| **Capabilities** | `external_integration`, `chat` |
 | **Webhook URL (Memory)** | `{NGROK_URL}/webhook/memory` |
-| **Webhook URL (Real-Time)** | `{NGROK_URL}/webhook/realtime` |
 | **Auth URL** | `{NGROK_URL}/setup` |
 | **Setup Completed URL** | `{NGROK_URL}/setup/status` |
 | **Setup Instructions** | "Tap the link below to connect your WhatsApp. You'll scan a QR code just like WhatsApp Web." |
@@ -166,10 +161,10 @@ When submitting the app on Omi:
    - Show the formatted recap arriving in WhatsApp self-chat
    - "Every conversation automatically becomes a clean recap in my WhatsApp."
 
-3. **[1:00 - 1:40] Feature 2: Voice Message**
-   - During a conversation, say: "Send message to [judge's name or friend]: Great meeting today, I'll send the notes over."
+3. **[1:00 - 1:40] Feature 2: Chat Tools**
+   - Ask Omi AI: "Send a WhatsApp message to [judge's name or friend] saying: Great meeting today, I'll send the notes over."
    - Show the message arriving on the recipient's WhatsApp
-   - "I just sent a WhatsApp message without touching my phone."
+   - "I just sent a WhatsApp message just by asking Omi."
 
 4. **[1:40 - 2:00] Wrap-up**
    - "No LLM costs, no complex setup — just scan a QR code and every conversation flows to WhatsApp. Built with Omi webhooks and Baileys."
@@ -180,7 +175,7 @@ When submitting the app on Omi:
 
 - [ ] User can scan QR code and link WhatsApp in under 30 seconds
 - [ ] After a conversation ends, recap appears in WhatsApp self-chat within 10 seconds
-- [ ] "Send message to [name]" works for contacts saved in WhatsApp
+- [ ] Asking Omi AI to send a WhatsApp message works for contacts saved in WhatsApp
 - [ ] No crashes during 2-minute demo
 - [ ] Clean, readable message formatting in WhatsApp
 

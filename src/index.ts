@@ -119,7 +119,6 @@ app.listen(PORT, () => {
   console.log(`  Setup page:    http://localhost:${PORT}/setup?uid=test`);
   console.log(`  Setup status:  http://localhost:${PORT}/setup/status?uid=test`);
   console.log(`  Memory hook:   POST http://localhost:${PORT}/webhook/memory?uid=test`);
-  console.log(`  Realtime hook: POST http://localhost:${PORT}/webhook/realtime?uid=test&session_id=s1`);
   console.log('');
 
   // Restore sessions after server is listening
