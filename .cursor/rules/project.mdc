@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Omi WhatsApp Integration
 
-This is a hackathon MVP — an Omi integration app that sends WhatsApp meeting recaps and handles voice-triggered messaging.
+A production app live on the Omi App Store. It sends WhatsApp meeting recaps and handles voice-triggered messaging via Omi wearable integrations.
 
 ## Key Docs
 
@@ -16,16 +16,17 @@ This is a hackathon MVP — an Omi integration app that sends WhatsApp meeting r
 
 - Node.js 22 + TypeScript + Express
 - `@whiskeysockets/baileys` for WhatsApp (QR auth, contacts, messaging)
-- Single process, no database, in-memory state for MVP
+- Single process, in-memory state (no database)
+- Deployed with pm2, sessions persisted to disk
 
 ## Conventions
 
-- Keep it simple. This is a hackathon — working > elegant.
+- This is production — prioritize correctness, reliability, and clean code over speed of shipping.
 - No LLMs. Omi's `structured` payload already provides title, overview, and action items.
 - One concern per file. Routes in `src/routes/`, services in `src/services/`, types in `src/types/`.
 - Always handle the `uid` query parameter — it identifies the Omi user.
 - Return `200 OK` quickly from webhooks. Do async work after responding when possible.
-- Log with pino. Set level to `silent` for demo, `info` for dev.
+- Log with pino. Use `info` level in production, `debug` for local dev.
 
 ## Endpoints
 

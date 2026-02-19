@@ -59,7 +59,10 @@ function loadCachedContacts(uid: string): void {
 // SSE listeners keyed by uid (multiple browsers can listen)
 const listeners = new Map<string, Set<SessionEventCallback>>();
 
-const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
+const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
+
+// Baileys internal logger — errors only to keep pm2 logs clean
+const baileysLogger = pino({ level: 'error' });
 
 /** Emit a session event to all registered SSE listeners for this uid */
 function emit(uid: string, event: SessionEvent): void {
@@ -144,7 +147,7 @@ export async function initSession(uid: string): Promise<void> {
 
   const socket = makeWASocket({
     auth: state,
-    logger: logger as any,
+    logger: baileysLogger as any,
     printQRInTerminal: false,
     browser: ['Omi WhatsApp', 'Chrome', '1.0.0'],
   });
