@@ -111,7 +111,7 @@ function restoreSessions(): void {
 // ---------------------------------------------------------------------------
 // Start server
 // ---------------------------------------------------------------------------
-app.listen(PORT, () => {
+app.listen(PORT, '127.0.0.1', () => {
   logger.info({ port: PORT }, 'Server started');
   console.log(`\n  Omi WhatsApp Integration`);
   console.log(`  ========================`);
