@@ -20,6 +20,9 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 
 const app = express();
 
+// Behind nginx reverse proxy — trust first proxy for correct client IP in rate limiting / logs
+app.set('trust proxy', 1);
+
 // Parse JSON bodies (Omi webhook payloads)
 app.use(express.json());
 
@@ -88,7 +91,11 @@ app.use('/setup/tools', toolsRouter); // Omi resolves relative to App Home URL (
 // ---------------------------------------------------------------------------
 // Auto-restore existing WhatsApp sessions from filesystem on startup
 // ---------------------------------------------------------------------------
-function restoreSessions(): void {
+/**
+ * Restore sessions sequentially with a small delay between each to avoid
+ * saturating CPU/network and starving new users hitting /setup for a QR code.
+ */
+async function restoreSessions(): Promise<void> {
   const sessionsDir = 'sessions';
   if (!fs.existsSync(sessionsDir)) return;
 
@@ -96,16 +103,23 @@ function restoreSessions(): void {
     return fs.statSync(path.join(sessionsDir, entry)).isDirectory();
   });
 
+  if (uids.length === 0) return;
+
+  logger.info({ count: uids.length }, 'Restoring WhatsApp sessions (staggered)');
+
+  const STAGGER_MS = 1_500;
+
   for (const uid of uids) {
     logger.info({ uid }, 'Restoring WhatsApp session');
-    initSession(uid).catch((err) => {
+    try {
+      await initSession(uid);
+    } catch (err) {
       logger.error({ uid, err }, 'Failed to restore WhatsApp session');
-    });
+    }
+    await new Promise((r) => setTimeout(r, STAGGER_MS));
   }
 
-  if (uids.length > 0) {
-    logger.info({ count: uids.length }, 'Sessions restored');
-  }
+  logger.info({ count: uids.length }, 'All sessions restored');
 }
 
 // ---------------------------------------------------------------------------
