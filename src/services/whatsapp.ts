@@ -167,6 +167,16 @@ export async function initSession(uid: string): Promise<void> {
     // TODO: remove once Baileys ships a release with the updated default
     version: [2, 3000, 1033893291],
     browser: ['Omi WhatsApp', 'Chrome', '1.0.0'],
+
+    // Performance: skip heavy work that delays QR generation.
+    // We only need contacts (synced via messaging-history.set), not full chat history.
+    syncFullHistory: false,
+    shouldSyncHistoryMessage: () => false,
+    markOnlineOnConnect: false,
+    fireInitQueries: false,
+    generateHighQualityLinkPreview: false,
+    connectTimeoutMs: 10_000,
+    defaultQueryTimeoutMs: 15_000,
   });
 
   const session: WhatsAppSession = {
