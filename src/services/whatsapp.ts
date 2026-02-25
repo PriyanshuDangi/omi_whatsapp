@@ -18,6 +18,19 @@ import type { WhatsAppSession, SessionEventCallback, SessionEvent } from '../typ
 // Active sessions keyed by uid
 const sessions = new Map<string, WhatsAppSession>();
 
+// Retry state per uid — tracks consecutive failures for backoff
+const retryState = new Map<string, { attempts: number; timer?: ReturnType<typeof setTimeout> }>();
+
+const MAX_RECONNECT_ATTEMPTS = 5;
+const BASE_BACKOFF_MS = 2_000;
+const MAX_BACKOFF_MS = 60_000;
+
+// Status codes where reconnecting is pointless
+const NON_RETRIABLE_CODES = new Set([
+  DisconnectReason.loggedOut, // 401 — user explicitly logged out
+  405,                         // WhatsApp server-side rejection (registration blocked)
+]);
+
 // Contacts keyed by uid → jid → Contact
 const contactStore = new Map<string, Map<string, Contact>>();
 
@@ -149,6 +162,10 @@ export async function initSession(uid: string): Promise<void> {
     auth: state,
     logger: baileysLogger as any,
     printQRInTerminal: false,
+    // Pinned version — WhatsApp rejects outdated protocol versions with 405.
+    // See: https://github.com/WhiskeySockets/Baileys/issues/2370
+    // TODO: remove once Baileys ships a release with the updated default
+    version: [2, 3000, 1033893291],
     browser: ['Omi WhatsApp', 'Chrome', '1.0.0'],
   });
 
@@ -182,6 +199,7 @@ export async function initSession(uid: string): Promise<void> {
       session.connected = true;
       session.qr = undefined;
       session.userJid = socket.user?.id;
+      retryState.delete(uid);
       emit(uid, { type: 'connected' });
       logger.info({ uid, jid: session.userJid }, 'WhatsApp connected');
     }
@@ -189,20 +207,39 @@ export async function initSession(uid: string): Promise<void> {
     if (connection === 'close') {
       session.connected = false;
       const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
-      const loggedOut = statusCode === DisconnectReason.loggedOut;
 
-      emit(uid, { type: 'disconnected', reason: loggedOut ? 'logged_out' : 'connection_closed' });
-      logger.warn({ uid, statusCode, loggedOut }, 'WhatsApp disconnected');
+      if (NON_RETRIABLE_CODES.has(statusCode!)) {
+        const reason = statusCode === DisconnectReason.loggedOut ? 'logged_out' : 'server_rejected';
+        emit(uid, { type: 'disconnected', reason });
+        logger.warn({ uid, statusCode }, 'WhatsApp disconnected — not retriable, giving up');
+        sessions.delete(uid);
+        retryState.delete(uid);
+        return;
+      }
 
-      if (!loggedOut) {
-        // Reconnect automatically unless user logged out
-        logger.info({ uid }, 'Reconnecting...');
+      emit(uid, { type: 'disconnected', reason: 'connection_closed' });
+
+      const state = retryState.get(uid) ?? { attempts: 0 };
+      state.attempts += 1;
+      retryState.set(uid, state);
+
+      if (state.attempts > MAX_RECONNECT_ATTEMPTS) {
+        logger.error({ uid, statusCode, attempts: state.attempts },
+          'WhatsApp reconnect limit reached — giving up');
+        sessions.delete(uid);
+        retryState.delete(uid);
+        return;
+      }
+
+      const delayMs = Math.min(BASE_BACKOFF_MS * 2 ** (state.attempts - 1), MAX_BACKOFF_MS);
+      logger.info({ uid, statusCode, attempt: state.attempts, delayMs },
+        'Reconnecting with backoff...');
+
+      state.timer = setTimeout(() => {
         initSession(uid).catch((err) => {
           logger.error({ uid, err }, 'Failed to reconnect');
         });
-      } else {
-        sessions.delete(uid);
-      }
+      }, delayMs);
     }
   });
 
