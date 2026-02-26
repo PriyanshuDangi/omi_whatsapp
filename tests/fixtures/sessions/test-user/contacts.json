@@ -1,0 +1,33 @@
+{
+  "919876543210@s.whatsapp.net": {
+    "id": "919876543210@s.whatsapp.net",
+    "name": "John Smith",
+    "notify": "Johnny"
+  },
+  "919876543211@s.whatsapp.net": {
+    "id": "919876543211@s.whatsapp.net",
+    "name": "José García",
+    "notify": "Jose"
+  },
+  "919876543212@s.whatsapp.net": {
+    "id": "919876543212@s.whatsapp.net",
+    "name": "Alice",
+    "verifiedName": "Alice Wonderland"
+  },
+  "919876543213@s.whatsapp.net": {
+    "id": "919876543213@s.whatsapp.net",
+    "name": "Mom"
+  },
+  "919876543214@s.whatsapp.net": {
+    "id": "919876543214@s.whatsapp.net",
+    "name": "Robert Downey"
+  },
+  "120363000000000000@g.us": {
+    "id": "120363000000000000@g.us",
+    "name": "Family Group"
+  },
+  "status@broadcast": {
+    "id": "status@broadcast",
+    "name": "Status"
+  }
+}
