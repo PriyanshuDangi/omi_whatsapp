@@ -20,6 +20,9 @@ npm run build
 log "Running tests..."
 npm test
 
+log "Running test-api.mjs..."
+node test-api.mjs
+
 log "Reloading pm2 process..."
 if pm2 list | grep -q "$APP_NAME"; then
   pm2 reload ecosystem.config.cjs --update-env
