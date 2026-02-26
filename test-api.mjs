@@ -194,17 +194,100 @@ if (CONTACT) {
   console.log('  –  11. Chat tool — set reminder to contact (SKIPPED, no TEST_CONTACT)');
 }
 
+// ─── QR code ─────────────────────────────────────────────────────────────────
+
+const QR_UID = 'test-qr-uid';
+
+await run('12. QR code — setup page triggers session init', async () => {
+  // Hitting /setup kicks off Baileys session init in the background
+  const { text } = await request('GET', `/setup?uid=${QR_UID}`);
+  assert(text.includes('<'), 'Expected HTML response from setup page');
+});
+
+await run('13. QR code — setup status is false (not yet linked)', async () => {
+  const { json } = await request('GET', `/setup/status?uid=${QR_UID}`);
+  assert(typeof json.is_setup_completed === 'boolean', 'Missing is_setup_completed field');
+  assert(json.is_setup_completed === false, `Expected false for fresh UID, got ${json.is_setup_completed}`);
+});
+
+await run('14. QR code — SSE stream emits a QR data URL', async () => {
+  const TIMEOUT_MS = 20_000;
+
+  const qrDataUrl = await new Promise(async (resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`No QR event received within ${TIMEOUT_MS / 1000}s`)),
+      TIMEOUT_MS
+    );
+
+    const controller = new AbortController();
+    let res;
+    try {
+      res = await fetch(`${HOST}/setup/events?uid=${QR_UID}`, {
+        signal: controller.signal,
+        headers: { Accept: 'text/event-stream' },
+      });
+    } catch (err) {
+      clearTimeout(timer);
+      reject(err);
+      return;
+    }
+
+    // Parse the SSE stream line-by-line
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let lastEvent = '';
+
+    (async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // keep incomplete last line
+
+          for (const line of lines) {
+            if (line.startsWith('event:')) {
+              lastEvent = line.replace('event:', '').trim();
+            } else if (line.startsWith('data:') && lastEvent === 'qr') {
+              const data = line.replace('data:', '').trim();
+              clearTimeout(timer);
+              controller.abort();
+              resolve(data);
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        // AbortError is expected when we cancel after receiving the QR
+        if (err.name !== 'AbortError') {
+          clearTimeout(timer);
+          reject(err);
+        }
+      }
+    })();
+  });
+
+  assert(
+    typeof qrDataUrl === 'string' && qrDataUrl.startsWith('data:image/'),
+    `Expected a data: image URL, got: ${String(qrDataUrl).slice(0, 80)}`
+  );
+  console.log(`     → QR data URL received (${qrDataUrl.length} chars)`);
+});
+
 // ─── Error cases ─────────────────────────────────────────────────────────────
 
-await run('12. Error — missing UID on webhook', async () => {
+await run('15. Error — missing UID on webhook', async () => {
   await request('POST', '/webhook/memory', { body: {}, expectedStatus: 400 });
 });
 
-await run('13. Error — invalid UID (path traversal)', async () => {
+await run('16. Error — invalid UID (path traversal)', async () => {
   await request('GET', '/setup/status?uid=../../../etc/passwd', { expectedStatus: 400 });
 });
 
-await run('14. Error — unknown session on /tools', async () => {
+await run('17. Error — unknown session on /tools', async () => {
   await request('POST', '/tools/send_message?uid=nonexistent-uid-12345', {
     body: { uid: 'nonexistent-uid-12345', contact_name: 'Someone', message: 'fail' },
     expectedStatus: 403,
