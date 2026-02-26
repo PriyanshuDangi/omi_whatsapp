@@ -6,6 +6,7 @@
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
+  proto,
   type Contact,
   type AuthenticationState,
 } from '@whiskeysockets/baileys';
@@ -168,10 +169,17 @@ export async function initSession(uid: string): Promise<void> {
     version: [2, 3000, 1033893291],
     browser: ['Omi WhatsApp', 'Chrome', '1.0.0'],
 
-    // Performance: skip heavy work that delays QR generation.
-    // We only need contacts (synced via messaging-history.set), not full chat history.
+    // Performance: skip FULL history sync but allow types that carry contacts.
+    // Without these, messaging-history.set never fires and contacts never populate.
     syncFullHistory: false,
-    shouldSyncHistoryMessage: () => false,
+    shouldSyncHistoryMessage: (msg) => {
+      const type = msg.syncType;
+      const { HistorySyncType } = proto.HistorySync;
+      return type === HistorySyncType.PUSH_NAME
+        || type === HistorySyncType.INITIAL_BOOTSTRAP
+        || type === HistorySyncType.RECENT
+        || type === HistorySyncType.NON_BLOCKING_DATA;
+    },
     markOnlineOnConnect: false,
     fireInitQueries: false,
     generateHighQualityLinkPreview: false,
