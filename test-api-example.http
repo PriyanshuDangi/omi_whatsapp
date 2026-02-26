@@ -1,0 +1,199 @@
+### ============================================================
+### Omi WhatsApp Integration — API Test Script
+### ============================================================
+### Update these variables before running:
+
+@host = http://localhost:3000
+@uid = your-uid-here
+@contactName = John
+@secret = your-omi-app-secret-here
+
+### ============================================================
+### 1. Health Check
+### ============================================================
+
+GET {{host}}/health
+
+### ============================================================
+### 2. Setup — Check Status (is WhatsApp linked?)
+### ============================================================
+
+GET {{host}}/setup/status?uid={{uid}}
+
+### ============================================================
+### 3. Setup — Open QR Page (kicks off Baileys session)
+### ============================================================
+### Open this in a browser instead: {{host}}/setup?uid={{uid}}
+
+GET {{host}}/setup?uid={{uid}}
+
+### ============================================================
+### 4. Tool Manifest — Discover available chat tools
+### ============================================================
+
+GET {{host}}/.well-known/omi-tools.json
+
+### ============================================================
+### 5. Webhook — Omi Memory (simulates a conversation recap)
+### ============================================================
+
+POST {{host}}/webhook/memory?uid={{uid}}
+Content-Type: application/json
+Authorization: Bearer {{secret}}
+
+{
+  "id": "test-memory-001",
+  "created_at": "2025-01-01T12:00:00Z",
+  "started_at": "2025-01-01T11:45:00Z",
+  "finished_at": "2025-01-01T12:00:00Z",
+  "discarded": false,
+  "structured": {
+    "title": "Test Meeting with Team",
+    "overview": "Discussed the Q1 roadmap and assigned action items for the product launch.",
+    "emoji": "📋",
+    "category": "work",
+    "action_items": [
+      { "description": "Finalize the launch plan by Friday", "completed": false },
+      { "description": "Send design specs to the engineering team", "completed": false }
+    ],
+    "events": []
+  },
+  "transcript_segments": [
+    {
+      "text": "Let's go over the Q1 roadmap.",
+      "speaker": "SPEAKER_0",
+      "speaker_id": 0,
+      "is_user": true,
+      "start": 0,
+      "end": 3
+    },
+    {
+      "text": "Sure, I think we should prioritize the product launch.",
+      "speaker": "SPEAKER_1",
+      "speaker_id": 1,
+      "is_user": false,
+      "start": 3,
+      "end": 7
+    }
+  ],
+  "apps_response": []
+}
+
+### ============================================================
+### 6. Webhook — Discarded Memory (should be skipped)
+### ============================================================
+
+POST {{host}}/webhook/memory?uid={{uid}}
+Content-Type: application/json
+Authorization: Bearer {{secret}}
+
+{
+  "id": "test-memory-discarded",
+  "created_at": "2025-01-01T12:00:00Z",
+  "started_at": "2025-01-01T11:50:00Z",
+  "finished_at": "2025-01-01T12:00:00Z",
+  "discarded": true,
+  "structured": {
+    "title": "",
+    "overview": "",
+    "emoji": "",
+    "category": "",
+    "action_items": [],
+    "events": []
+  },
+  "transcript_segments": [],
+  "apps_response": []
+}
+
+### ============================================================
+### 7. Chat Tool — Send WhatsApp Message to Contact
+### ============================================================
+
+POST {{host}}/tools/send_message?uid={{uid}}
+Content-Type: application/json
+
+{
+  "uid": "{{uid}}",
+  "contact_name": "{{contactName}}",
+  "message": "Hey! This is a test message sent from the Omi WhatsApp integration."
+}
+
+### ============================================================
+### 8. Chat Tool — Send Meeting Notes to Self
+### ============================================================
+
+POST {{host}}/tools/send_meeting_notes?uid={{uid}}
+Content-Type: application/json
+
+{
+  "uid": "{{uid}}",
+  "summary": "Met with the engineering team to discuss the Q1 roadmap.\n\n- Product launch planned for March 15\n- Design specs due by end of week\n- Follow up with marketing on the announcement draft"
+}
+
+### ============================================================
+### 9. Chat Tool — Send Recap to a Contact
+### ============================================================
+
+POST {{host}}/tools/send_recap_to_contact?uid={{uid}}
+Content-Type: application/json
+
+{
+  "uid": "{{uid}}",
+  "contact_name": "{{contactName}}",
+  "summary": "Here are the notes from our meeting today:\n\n1. Agreed on the project timeline\n2. Budget approved for Q1\n3. Next sync scheduled for Monday"
+}
+
+### ============================================================
+### 10. Chat Tool — Set Reminder (to Self)
+### ============================================================
+
+POST {{host}}/tools/set_reminder?uid={{uid}}
+Content-Type: application/json
+
+{
+  "uid": "{{uid}}",
+  "message": "Follow up with the design team about the mockups",
+  "delay_minutes": 5
+}
+
+### ============================================================
+### 11. Chat Tool — Set Reminder (to a Contact)
+### ============================================================
+
+POST {{host}}/tools/set_reminder?uid={{uid}}
+Content-Type: application/json
+
+{
+  "uid": "{{uid}}",
+  "message": "Don't forget about our meeting at 3pm!",
+  "delay_minutes": 10,
+  "contact_name": "{{contactName}}"
+}
+
+### ============================================================
+### 12. Error Cases — Missing UID
+### ============================================================
+
+POST {{host}}/webhook/memory
+Content-Type: application/json
+
+{}
+
+### ============================================================
+### 13. Error Cases — Invalid UID format
+### ============================================================
+
+GET {{host}}/setup/status?uid=../../../etc/passwd
+
+### ============================================================
+### 14. Error Cases — Unknown session on /tools
+### ============================================================
+
+POST {{host}}/tools/send_message?uid=nonexistent-uid
+Content-Type: application/json
+
+{
+  "uid": "nonexistent-uid",
+  "contact_name": "Someone",
+  "message": "This should fail"
+}
