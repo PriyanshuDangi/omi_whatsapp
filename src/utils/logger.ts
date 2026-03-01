@@ -10,7 +10,6 @@ import { AsyncLocalStorage } from 'async_hooks';
 import fs from 'fs';
 import path from 'path';
 import pino from 'pino';
-import { Writable } from 'stream';
 
 /** Request context (tid) for correlating logs. Set by middleware, read by mixin. */
 export const requestContextStorage = new AsyncLocalStorage<{ tid: string }>();
@@ -22,49 +21,12 @@ function getDateString(): string {
   return new Date().toISOString().slice(0, 10); // yyyy-mm-dd, always sorted
 }
 
-/** Writable stream that rotates to a new file each day (app-yyyy-mm-dd.log). */
-class DailyFileStream extends Writable {
-  private currentDate: string;
-  private stream: fs.WriteStream | null = null;
-
-  constructor() {
-    super();
-    this.currentDate = getDateString();
-    this.openStream();
-  }
-
-  private openStream(): void {
-    const filename = `app-${this.currentDate}.log`;
-    const dest = path.join(LOGS_DIR, filename);
-    this.stream = fs.createWriteStream(dest, { flags: 'a' });
-  }
-
-  override _write(
-    chunk: Buffer | string,
-    encoding: BufferEncoding,
-    callback: (err?: Error | null) => void,
-  ): void {
-    const date = getDateString();
-    if (date !== this.currentDate) {
-      if (this.stream && !this.stream.destroyed) {
-        this.stream.destroy();
-      }
-      this.currentDate = date;
-      this.openStream();
-    }
-    if (this.stream && !this.stream.destroyed) {
-      this.stream.write(chunk, encoding, callback);
-    } else {
-      callback();
-    }
-  }
-}
-
-const dailyFileStream = new DailyFileStream();
+const DAILY_LOG_FILE = path.join(LOGS_DIR, `app-${getDateString()}.log`);
+const fileDestination = pino.destination({ dest: DAILY_LOG_FILE, append: true, sync: false });
 
 const multistream = pino.multistream([
   { stream: process.stdout, level: 'info' },
-  { stream: dailyFileStream, level: 'info' },
+  { stream: fileDestination, level: 'info' },
 ]);
 
 /** App-wide logger. Tid is added to every log when inside a request (AsyncLocalStorage). */
