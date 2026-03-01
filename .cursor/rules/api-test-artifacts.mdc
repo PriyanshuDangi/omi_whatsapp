@@ -1,0 +1,20 @@
+---
+description: Keep API test artifacts in sync with new endpoints
+globs: "{src/routes/**/*.ts,src/services/**/*.ts,src/index.ts}"
+alwaysApply: false
+---
+
+# API Test Artifact Sync
+
+When adding or changing API endpoints in this project, always update both:
+
+- `test-api-example.http`
+- `test-api.mjs`
+
+Required updates for new endpoints:
+
+- Add at least one runnable request example to `test-api-example.http`.
+- Add or update the matching script flow in `test-api.mjs`.
+- Keep request paths, methods, required headers, and payload shapes aligned with route code.
+- If an endpoint requires `uid`, include `uid` in both test files.
+- Do not consider endpoint work complete until both test files are updated.

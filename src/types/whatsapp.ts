@@ -18,7 +18,9 @@ export interface WhatsAppSession {
 /** Callback for QR / connection status updates pushed to the setup page via SSE */
 export type SessionEventCallback = (event: SessionEvent) => void;
 
+export type SessionDisconnectReason = 'logged_out' | 'server_rejected' | 'connection_closed' | 'unknown';
+
 export type SessionEvent =
   | { type: 'qr'; data: string }
   | { type: 'connected' }
-  | { type: 'disconnected'; reason?: string };
+  | { type: 'disconnected'; reason?: SessionDisconnectReason };

@@ -119,6 +119,33 @@
       font-size: 0.85rem;
       margin-top: 0.5rem;
     }
+
+    .btn {
+      display: inline-block;
+      padding: 0.6rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 1rem;
+      transition: opacity 0.2s;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-danger {
+      background: #e74c3c;
+      color: #fff;
+    }
+
+    .btn-primary {
+      background: #25d366;
+      color: #fff;
+    }
   </style>
 </head>
 <body>
@@ -149,12 +176,20 @@
       <div class="checkmark">✓</div>
       <h2>WhatsApp Connected!</h2>
       <p>You're all set. Meeting recaps will now be sent to your WhatsApp.<br />You can close this page.</p>
+      <button class="btn btn-danger" id="logout-btn">Logout WhatsApp</button>
+    </div>
+
+    <!-- Disconnected view (terminal — logged out or server rejected) -->
+    <div class="success" id="disconnected-view">
+      <div class="checkmark" style="background: #e74c3c;">!</div>
+      <h2 id="disconnected-title">Session Logged Out</h2>
+      <p id="disconnected-msg">Your WhatsApp session has ended.<br />Please relink to continue receiving recaps.</p>
+      <button class="btn btn-primary" id="reconnect-btn">Reconnect WhatsApp</button>
     </div>
   </div>
 
   <script>
     (function () {
-      // Extract uid from the current page URL
       const params = new URLSearchParams(window.location.search);
       const uid = params.get('uid');
       if (!uid) {
@@ -166,33 +201,77 @@
       const spinner = document.getElementById('spinner');
       const setupView = document.getElementById('setup-view');
       const successView = document.getElementById('success-view');
+      const disconnectedView = document.getElementById('disconnected-view');
+      const disconnectedTitle = document.getElementById('disconnected-title');
+      const disconnectedMsg = document.getElementById('disconnected-msg');
       const statusEl = document.getElementById('status');
+      const logoutBtn = document.getElementById('logout-btn');
+      const reconnectBtn = document.getElementById('reconnect-btn');
 
-      // Connect to SSE events
-      const evtSource = new EventSource(`/setup/events?uid=${encodeURIComponent(uid)}`);
+      const TERMINAL_REASONS = ['logged_out', 'server_rejected'];
+
+      function showView(view) {
+        setupView.style.display = view === 'setup' ? 'block' : 'none';
+        successView.style.display = view === 'success' ? 'flex' : 'none';
+        disconnectedView.style.display = view === 'disconnected' ? 'flex' : 'none';
+      }
+
+      var evtSource = new EventSource('/setup/events?uid=' + encodeURIComponent(uid));
 
       evtSource.addEventListener('qr', function (e) {
         qrImg.src = e.data;
         qrImg.style.display = 'block';
         spinner.style.display = 'none';
         statusEl.textContent = 'Scan the QR code with WhatsApp';
+        showView('setup');
       });
 
       evtSource.addEventListener('connected', function () {
-        setupView.style.display = 'none';
-        successView.style.display = 'flex';
+        showView('success');
         evtSource.close();
       });
 
-      evtSource.addEventListener('disconnected', function () {
+      evtSource.addEventListener('disconnected', function (e) {
+        var reason = e.data || 'unknown';
+
+        if (TERMINAL_REASONS.indexOf(reason) !== -1) {
+          evtSource.close();
+          if (reason === 'logged_out') {
+            disconnectedTitle.textContent = 'Session Logged Out';
+            disconnectedMsg.innerHTML = 'Your WhatsApp session has ended.<br />Please relink to continue receiving recaps.';
+          } else {
+            disconnectedTitle.textContent = 'Connection Rejected';
+            disconnectedMsg.innerHTML = 'WhatsApp rejected this session.<br />Please relink your account.';
+          }
+          showView('disconnected');
+          return;
+        }
+
         statusEl.textContent = 'Disconnected. Reconnecting...';
         spinner.style.display = 'block';
         qrImg.style.display = 'none';
+        showView('setup');
       });
 
       evtSource.onerror = function () {
         statusEl.textContent = 'Connection lost. Refresh to retry.';
       };
+
+      logoutBtn.addEventListener('click', function () {
+        logoutBtn.disabled = true;
+        logoutBtn.textContent = 'Logging out...';
+        fetch('/setup/logout?uid=' + encodeURIComponent(uid), { method: 'POST' })
+          .then(function () { window.location.reload(); })
+          .catch(function () {
+            logoutBtn.disabled = false;
+            logoutBtn.textContent = 'Logout WhatsApp';
+            alert('Logout failed. Please try again.');
+          });
+      });
+
+      reconnectBtn.addEventListener('click', function () {
+        window.location.href = '/setup?uid=' + encodeURIComponent(uid);
+      });
     })();
   </script>
 </body>
