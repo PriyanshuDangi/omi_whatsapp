@@ -171,7 +171,30 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 12. Error Cases — Missing UID
+### 12. On-Demand History Sync (default count)
+### ============================================================
+
+POST {{host}}/setup/sync-history?uid={{uid}}
+Content-Type: application/json
+
+{
+  "uid": "{{uid}}"
+}
+
+### ============================================================
+### 13. On-Demand History Sync (custom count)
+### ============================================================
+
+POST {{host}}/setup/sync-history?uid={{uid}}
+Content-Type: application/json
+
+{
+  "uid": "{{uid}}",
+  "count": 100
+}
+
+### ============================================================
+### 14. Error Cases — Missing UID
 ### ============================================================
 
 POST {{host}}/webhook/memory
@@ -180,13 +203,13 @@ Content-Type: application/json
 {}
 
 ### ============================================================
-### 13. Error Cases — Invalid UID format
+### 15. Error Cases — Invalid UID format
 ### ============================================================
 
 GET {{host}}/setup/status?uid=../../../etc/passwd
 
 ### ============================================================
-### 14. Error Cases — Unknown session on /tools
+### 16. Error Cases — Unknown session on /tools
 ### ============================================================
 
 POST {{host}}/tools/send_message?uid=nonexistent-uid

@@ -8,7 +8,7 @@ Single-process Node.js + Express server. No database, no microservices — every
 src/
 ├── index.ts                  # Entry point — Express app, route mounting, startup
 ├── routes/
-│   ├── setup.ts              # GET /setup, GET /setup/status, GET /setup/events (SSE)
+│   ├── setup.ts              # GET /setup, GET /setup/status, GET /setup/events, POST /setup/sync-history
 │   ├── webhook.ts            # POST /webhook/memory
 │   └── chat-tools.ts         # GET /.well-known/omi-tools.json, POST /tools/*
 ├── services/
@@ -67,13 +67,35 @@ User asks Omi AI: "Send me the meeting notes on WhatsApp"
   → Return { result: "Meeting notes sent to your WhatsApp." }
 ```
 
+### History Sync & Contact Enrichment
+
+```
+Baileys connects → WhatsApp sends history sync events
+  → messaging-history.set fires with { contacts, chats, messages, syncType }
+  → contacts: direct Contact records (push names, phone-set names)
+  → chats: Chat metadata with user-saved address book names (Chat.name / displayName)
+  → messages: WAMessage records with pushName fields (sender self-chosen names)
+  → enrichContactsFromChats(): fills Contact.name from chat metadata
+  → enrichContactsFromMessages(): fills Contact.notify from message pushName
+  → persistContacts(): saves enriched contacts to disk
+```
+
+### On-Demand History Sync
+
+```
+POST /setup/sync-history?uid=... { count: 50 }
+  → whatsapp.ts: requestHistorySync() → socket.fetchMessageHistory()
+  → WhatsApp main device sends additional history
+  → messaging-history.set fires again → contacts re-enriched
+```
+
 ## State Management
 
 | State | Storage | Lifetime |
 |-------|---------|----------|
 | Baileys auth credentials | Filesystem (`sessions/{uid}/`) | Persistent across restarts |
 | Active WhatsApp sockets | In-memory `Map<uid, WhatsAppSession>` | Process lifetime |
-| Contacts | In-memory `Map<uid, Map<jid, Contact>>` | Process lifetime, synced on connect |
+| Contacts | In-memory `Map<uid, Map<jid, Contact>>` + disk cache | Process lifetime, enriched from history sync |
 | SSE listeners | In-memory `Map<uid, Set<callback>>` | Until browser disconnects |
 
 ## Key Design Decisions
@@ -83,3 +105,4 @@ User asks Omi AI: "Send me the meeting notes on WhatsApp"
 - **Return 200 immediately** — All webhooks respond instantly, then do async work. Omi has timeout expectations.
 - **SSE for setup** — Real-time QR updates without polling. EventSource in the browser, simple write on the server.
 - **Baileys auto-reconnect** — On disconnect (unless logged out), the service automatically re-initializes the session.
+- **Contact enrichment from multiple sources** — Contacts are enriched from three sources during history sync: direct contact records, chat metadata (user's address book names), and message push names. Chat names take priority as they reflect the user's saved contact name, not the sender's self-set name.

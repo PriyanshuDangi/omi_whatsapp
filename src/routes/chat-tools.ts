@@ -12,7 +12,7 @@
  */
 
 import { Router } from 'express';
-import pino from 'pino';
+import { logger } from '../utils/logger.js';
 import { findContact } from '../services/contact-matcher.js';
 import { scheduleReminder } from '../services/reminder.js';
 import {
@@ -22,8 +22,6 @@ import {
   getContacts,
   waitForContacts,
 } from '../services/whatsapp.js';
-
-const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
 
 // ---------------------------------------------------------------------------
 // Manifest
@@ -160,7 +158,7 @@ toolsRouter.post('/send_message', async (req, res) => {
     return;
   }
 
-  logger.debug({ uid, contactName, message }, 'Chat tool: send_message request received');
+  logger.info({ uid, contactName, message }, 'Chat tool: send_message request received');
 
   if (!isConnected(uid)) {
     logger.warn({ uid }, 'Chat tool: send_message — WhatsApp not connected');
@@ -181,7 +179,7 @@ toolsRouter.post('/send_message', async (req, res) => {
   const contacts = getContacts(uid);
   const match = findContact(contacts, contactName);
 
-  logger.debug({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
+  logger.info({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
 
   if (!match) {
     logger.warn({ uid, contactName }, 'Chat tool: send_message — contact not found');
@@ -217,7 +215,7 @@ toolsRouter.post('/send_meeting_notes', async (req, res) => {
     return;
   }
 
-  logger.debug({ uid, summaryLength: summary.length }, 'Chat tool: send_meeting_notes request received');
+  logger.info({ uid, summaryLength: summary.length }, 'Chat tool: send_meeting_notes request received');
 
   if (!isConnected(uid)) {
     logger.warn({ uid }, 'Chat tool: send_meeting_notes — WhatsApp not connected');
@@ -261,7 +259,7 @@ toolsRouter.post('/send_recap_to_contact', async (req, res) => {
     return;
   }
 
-  logger.debug({ uid, contactName, summaryLength: summary.length }, 'Chat tool: send_recap_to_contact request received');
+  logger.info({ uid, contactName, summaryLength: summary.length }, 'Chat tool: send_recap_to_contact request received');
 
   if (!isConnected(uid)) {
     logger.warn({ uid }, 'Chat tool: send_recap_to_contact — WhatsApp not connected');
@@ -282,7 +280,7 @@ toolsRouter.post('/send_recap_to_contact', async (req, res) => {
   const contacts = getContacts(uid);
   const match = findContact(contacts, contactName);
 
-  logger.debug({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
+  logger.info({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
 
   if (!match) {
     logger.warn({ uid, contactName }, 'Chat tool: send_recap_to_contact — contact not found');
@@ -325,7 +323,7 @@ toolsRouter.post('/set_reminder', async (req, res) => {
     return;
   }
 
-  logger.debug({ uid, message, delayMinutes, contactName: contactName ?? null }, 'Chat tool: set_reminder request received');
+  logger.info({ uid, message, delayMinutes, contactName: contactName ?? null }, 'Chat tool: set_reminder request received');
 
   if (!isConnected(uid)) {
     logger.warn({ uid }, 'Chat tool: set_reminder — WhatsApp not connected');
@@ -350,7 +348,7 @@ toolsRouter.post('/set_reminder', async (req, res) => {
     const contacts = getContacts(uid);
     const match = findContact(contacts, contactName);
 
-    logger.debug({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
+    logger.info({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
 
     if (!match) {
       logger.warn({ uid, contactName }, 'Chat tool: set_reminder — contact not found');

@@ -1,20 +1,20 @@
 /**
- * Setup routes — QR code page, SSE events, and setup status for Omi polling.
+ * Setup routes — QR code page, SSE events, setup status, and history sync.
  *
- * GET /setup?uid=...        → Serve the HTML setup page
- * GET /setup/status?uid=... → Return { is_setup_completed: boolean } for Omi
- * GET /setup/events?uid=... → SSE stream pushing QR codes and connection status
+ * GET  /setup?uid=...            → Serve the HTML setup page
+ * GET  /setup/status?uid=...     → Return { is_setup_completed: boolean } for Omi
+ * GET  /setup/events?uid=...     → SSE stream pushing QR codes and connection status
+ * POST /setup/sync-history?uid=… → Trigger on-demand history sync for contact enrichment
  */
 
 import { Router } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as QRCode from 'qrcode';
-import { initSession, isConnected, subscribe } from '../services/whatsapp.js';
-import pino from 'pino';
+import { initSession, isConnected, subscribe, requestHistorySync } from '../services/whatsapp.js';
+import { logger } from '../utils/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
 
 export const setupRouter = Router();
 
@@ -91,4 +91,33 @@ setupRouter.get('/events', (req, res) => {
   req.on('close', () => {
     unsubscribe();
   });
+});
+
+/**
+ * POST /setup/sync-history?uid=...
+ * Triggers on-demand history sync from the main WhatsApp device.
+ * Results arrive asynchronously via the messaging-history.set event
+ * and automatically enrich the contact store.
+ */
+setupRouter.post('/sync-history', async (req, res) => {
+  const uid = (req.query.uid as string) || req.body?.uid;
+  if (!uid) {
+    res.status(400).json({ error: 'Missing uid parameter' });
+    return;
+  }
+
+  if (!isConnected(uid)) {
+    res.status(401).json({ error: 'WhatsApp not connected. Please link your WhatsApp account first.' });
+    return;
+  }
+
+  const count = parseInt(req.body?.count ?? '50', 10);
+
+  try {
+    await requestHistorySync(uid, count);
+    res.json({ result: 'History sync requested. Contacts will be updated as data arrives.' });
+  } catch (err) {
+    logger.error({ uid, err }, 'Failed to request history sync');
+    res.status(500).json({ error: 'Failed to request history sync. Please try again.' });
+  }
 });

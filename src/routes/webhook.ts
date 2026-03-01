@@ -5,15 +5,13 @@
  */
 
 import { Router } from 'express';
-import pino from 'pino';
+import { logger } from '../utils/logger.js';
 import type { OmiMemory } from '../types/omi.js';
 import { formatMemoryRecap } from '../services/formatter.js';
 import {
   isConnected,
   sendSelfMessage,
 } from '../services/whatsapp.js';
-
-const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
 
 export const webhookRouter = Router();
 
@@ -33,8 +31,8 @@ webhookRouter.post('/memory', (req, res) => {
   // Process asynchronously
   const memory = req.body as OmiMemory;
 
-  logger.debug({ uid }, 'Memory webhook received');
-  logger.debug({ uid, body: req.body }, 'Memory webhook raw body');
+  logger.info({ uid }, 'Memory webhook received');
+  logger.info({ uid, body: req.body }, 'Memory webhook raw body');
 
   // Skip discarded or empty memories
   if (memory.discarded) {

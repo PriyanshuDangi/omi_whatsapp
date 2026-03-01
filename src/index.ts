@@ -7,7 +7,7 @@ import 'dotenv/config';
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import pino from 'pino';
+import { logger } from './utils/logger.js';
 import { setupRouter } from './routes/setup.js';
 import { webhookRouter } from './routes/webhook.js';
 import { manifestRouter, toolsRouter } from './routes/chat-tools.js';
@@ -15,7 +15,6 @@ import { initSession } from './services/whatsapp.js';
 import { startReminderTick } from './services/reminder.js';
 import { sanitizeUid } from './utils/sanitize.js';
 
-const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
 const app = express();
@@ -25,6 +24,26 @@ app.set('trust proxy', 1);
 
 // Parse JSON bodies (Omi webhook payloads)
 app.use(express.json());
+
+// ---------------------------------------------------------------------------
+// Request logging — log every incoming request with method, path, uid
+// ---------------------------------------------------------------------------
+app.use((req, res, next) => {
+  const start = Date.now();
+  const uid = (req.query.uid as string) || req.body?.uid;
+
+  res.on('finish', () => {
+    logger.info({
+      method: req.method,
+      path: req.originalUrl,
+      status: res.statusCode,
+      uid: uid || undefined,
+      ms: Date.now() - start,
+    }, 'Request');
+  });
+
+  next();
+});
 
 // ---------------------------------------------------------------------------
 // UID sanitization middleware (must come after express.json for req.body)
@@ -105,12 +124,12 @@ async function restoreSessions(): Promise<void> {
 
   if (uids.length === 0) return;
 
-  logger.info({ count: uids.length }, 'Restoring WhatsApp sessions (staggered)');
+  logger.debug({ count: uids.length }, 'Restoring WhatsApp sessions (staggered)');
 
   const STAGGER_MS = 1_500;
 
   for (const uid of uids) {
-    logger.info({ uid }, 'Restoring WhatsApp session');
+    logger.debug({ uid }, 'Restoring WhatsApp session');
     try {
       await initSession(uid);
     } catch (err) {
