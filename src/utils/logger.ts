@@ -1,32 +1,80 @@
 /**
  * Shared pino logger — single source of truth for all app logging.
  *
- * Writes to both stdout (for pm2) and logs/app.log (persistent file).
+ * Writes to both stdout (for pm2) and logs/app-yyyy-mm-dd.log (one file per day, sorted).
  * Exports a silenced Baileys logger to suppress all Baileys internal noise.
+ * Request-scoped tid is added via AsyncLocalStorage + mixin when present.
  */
 
+import { AsyncLocalStorage } from 'async_hooks';
 import fs from 'fs';
 import path from 'path';
 import pino from 'pino';
+import { Writable } from 'stream';
 
-// pino transports run in a worker thread where relative paths and import.meta.url
-// resolve unpredictably. Write directly to a pino.destination for reliable file logging.
+/** Request context (tid) for correlating logs. Set by middleware, read by mixin. */
+export const requestContextStorage = new AsyncLocalStorage<{ tid: string }>();
+
 const LOGS_DIR = path.join(process.cwd(), 'logs');
-const LOG_FILE = path.join(LOGS_DIR, 'app.log');
-
 fs.mkdirSync(LOGS_DIR, { recursive: true });
 
-const fileDestination = pino.destination({ dest: LOG_FILE, append: true, sync: false });
+function getDateString(): string {
+  return new Date().toISOString().slice(0, 10); // yyyy-mm-dd, always sorted
+}
+
+/** Writable stream that rotates to a new file each day (app-yyyy-mm-dd.log). */
+class DailyFileStream extends Writable {
+  private currentDate: string;
+  private stream: fs.WriteStream | null = null;
+
+  constructor() {
+    super();
+    this.currentDate = getDateString();
+    this.openStream();
+  }
+
+  private openStream(): void {
+    const filename = `app-${this.currentDate}.log`;
+    const dest = path.join(LOGS_DIR, filename);
+    this.stream = fs.createWriteStream(dest, { flags: 'a' });
+  }
+
+  override _write(
+    chunk: Buffer | string,
+    encoding: BufferEncoding,
+    callback: (err?: Error | null) => void,
+  ): void {
+    const date = getDateString();
+    if (date !== this.currentDate) {
+      if (this.stream && !this.stream.destroyed) {
+        this.stream.destroy();
+      }
+      this.currentDate = date;
+      this.openStream();
+    }
+    if (this.stream && !this.stream.destroyed) {
+      this.stream.write(chunk, encoding, callback);
+    } else {
+      callback();
+    }
+  }
+}
+
+const dailyFileStream = new DailyFileStream();
 
 const multistream = pino.multistream([
   { stream: process.stdout, level: 'info' },
-  { stream: fileDestination, level: 'info' },
+  { stream: dailyFileStream, level: 'info' },
 ]);
 
-/** App-wide logger. */
+/** App-wide logger. Tid is added to every log when inside a request (AsyncLocalStorage). */
 export const logger = pino({
   level: 'info',
   base: undefined,
+  mixin() {
+    const store = requestContextStorage.getStore();
+    return store ? { tid: store.tid } : {};
+  },
   formatters: {
     level(label) { return { level: label }; },
   },

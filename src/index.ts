@@ -4,10 +4,11 @@
  */
 
 import 'dotenv/config';
+import { randomUUID } from 'crypto';
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { logger } from './utils/logger.js';
+import { logger, requestContextStorage } from './utils/logger.js';
 import { setupRouter } from './routes/setup.js';
 import { webhookRouter } from './routes/webhook.js';
 import { manifestRouter, toolsRouter } from './routes/chat-tools.js';
@@ -26,11 +27,39 @@ app.set('trust proxy', 1);
 app.use(express.json());
 
 // ---------------------------------------------------------------------------
+// Request-scoped tid — from header or generated; echoed in response; used in all logs via pino mixin
+// ---------------------------------------------------------------------------
+app.use((req, res, next) => {
+  const tid = (req.get('tid') || req.headers['tid'] as string)?.trim() || randomUUID();
+  res.setHeader('tid', tid);
+  requestContextStorage.run({ tid }, () => next());
+});
+
+// ---------------------------------------------------------------------------
 // Request logging — log every incoming request with method, path, uid
 // ---------------------------------------------------------------------------
 app.use((req, res, next) => {
   const start = Date.now();
   const uid = (req.query.uid as string) || req.body?.uid;
+
+  logger.info({
+    method: req.method,
+    path: req.originalUrl,
+    uid: uid || undefined,
+    body: req.body,
+  }, 'Request received');
+
+  let responseBody: unknown;
+  const originalJson = res.json.bind(res);
+  res.json = function (body: unknown) {
+    responseBody = body;
+    return originalJson(body);
+  };
+  const originalSend = res.send.bind(res);
+  res.send = function (body: unknown) {
+    if (responseBody === undefined) responseBody = body;
+    return originalSend(body);
+  };
 
   res.on('finish', () => {
     logger.info({
@@ -39,7 +68,8 @@ app.use((req, res, next) => {
       status: res.statusCode,
       uid: uid || undefined,
       ms: Date.now() - start,
-    }, 'Request');
+      body: responseBody,
+    }, 'Request Processed');
   });
 
   next();
