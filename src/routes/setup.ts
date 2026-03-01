@@ -1,9 +1,10 @@
 /**
- * Setup routes — QR code page, SSE events, setup status, and history sync.
+ * Setup routes — QR code page, SSE events, setup status, logout, and history sync.
  *
  * GET  /setup?uid=...            → Serve the HTML setup page
  * GET  /setup/status?uid=...     → Return { is_setup_completed: boolean } for Omi
  * GET  /setup/events?uid=...     → SSE stream pushing QR codes and connection status
+ * POST /setup/logout?uid=...     → Log out WhatsApp session and clean up auth state
  * POST /setup/sync-history?uid=… → Trigger on-demand history sync for contact enrichment
  */
 
@@ -11,7 +12,7 @@ import { Router } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as QRCode from 'qrcode';
-import { initSession, isConnected, subscribe, requestHistorySync } from '../services/whatsapp.js';
+import { initSession, isConnected, subscribe, requestHistorySync, logoutSession } from '../services/whatsapp.js';
 import { logger } from '../utils/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -91,6 +92,26 @@ setupRouter.get('/events', (req, res) => {
   req.on('close', () => {
     unsubscribe();
   });
+});
+
+/**
+ * POST /setup/logout?uid=...
+ * Logs out the WhatsApp session, removes auth state, and notifies SSE listeners.
+ */
+setupRouter.post('/logout', async (req, res) => {
+  const uid = (req.query.uid as string) || req.body?.uid;
+  if (!uid) {
+    res.status(400).json({ error: 'Missing uid parameter' });
+    return;
+  }
+
+  try {
+    await logoutSession(uid);
+    res.json({ result: 'WhatsApp session logged out.' });
+  } catch (err) {
+    logger.error({ uid, err }, 'Failed to logout WhatsApp session');
+    res.status(500).json({ error: 'Failed to logout. Please try again.' });
+  }
 });
 
 /**

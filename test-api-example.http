@@ -194,7 +194,18 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 14. Error Cases — Missing UID
+### 14. Setup — Logout WhatsApp Session
+### ============================================================
+
+POST {{host}}/setup/logout?uid={{uid}}
+Content-Type: application/json
+
+{
+  "uid": "{{uid}}"
+}
+
+### ============================================================
+### 15. Error Cases — Missing UID
 ### ============================================================
 
 POST {{host}}/webhook/memory

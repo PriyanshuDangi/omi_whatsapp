@@ -87,6 +87,14 @@ function emit(uid: string, event: SessionEvent): void {
   }
 }
 
+/** Remove persisted auth directory for a uid so next init starts with fresh credentials. */
+function clearSessionAuth(uid: string): void {
+  const sessionDir = path.join('sessions', uid);
+  if (fs.existsSync(sessionDir)) {
+    fs.rmSync(sessionDir, { recursive: true, force: true });
+  }
+}
+
 /** Register an SSE listener for session events. Returns an unsubscribe function. */
 export function subscribe(uid: string, cb: SessionEventCallback): () => void {
   if (!listeners.has(uid)) {
@@ -221,6 +229,10 @@ export async function initSession(uid: string): Promise<void> {
         logger.warn({ uid, statusCode }, 'WhatsApp disconnected — not retriable, giving up');
         sessions.delete(uid);
         retryState.delete(uid);
+        // Logged-out credentials are invalid. Clear local auth so user can relink via QR.
+        if (reason === 'logged_out') {
+          clearSessionAuth(uid);
+        }
         return;
       }
 
@@ -395,6 +407,35 @@ export async function requestHistorySync(uid: string, count = 50): Promise<void>
 
   await session.socket.fetchMessageHistory(count, oldestMsgKey, oldestMsgTimestamp);
   logger.info({ uid, count }, 'On-demand history sync requested');
+}
+
+/**
+ * Explicitly log out and fully clean up a WhatsApp session.
+ * Idempotent — safe to call even if the session is already gone.
+ */
+export async function logoutSession(uid: string): Promise<void> {
+  // Clear any pending reconnect timer
+  const retry = retryState.get(uid);
+  if (retry?.timer) clearTimeout(retry.timer);
+  retryState.delete(uid);
+
+  const session = sessions.get(uid);
+  if (session) {
+    try {
+      await session.socket.logout();
+    } catch (err) {
+      logger.warn({ uid, err }, 'Error during socket.logout (may already be disconnected)');
+    }
+    sessions.delete(uid);
+  }
+
+  contactStore.delete(uid);
+  emit(uid, { type: 'disconnected', reason: 'logged_out' });
+
+  // Remove persisted auth so next setup starts a fresh QR link
+  clearSessionAuth(uid);
+
+  logger.info({ uid }, 'WhatsApp session logged out and cleaned up');
 }
 
 /** Get the session for a uid, or undefined if not initialized. */
