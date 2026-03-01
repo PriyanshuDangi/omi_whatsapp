@@ -2,6 +2,7 @@ node_modules/
 dist/
 /sessions
 data/
+logs/
 .env
 auth_info*/
 *.js.map

@@ -5,10 +5,8 @@
 
 import fs from 'fs';
 import path from 'path';
-import pino from 'pino';
+import { logger } from '../utils/logger.js';
 import { isConnected, sendSelfMessage, sendMessage } from './whatsapp.js';
-
-const logger = pino({ level: process.env.LOG_LEVEL || 'silent' });
 
 const DATA_DIR = 'data';
 const REMINDERS_FILE = path.join(DATA_DIR, 'reminders.json');
@@ -42,7 +40,7 @@ function saveReminders(): void {
   try {
     ensureDataDir();
     fs.writeFileSync(REMINDERS_FILE, JSON.stringify(reminders, null, 2), 'utf-8');
-    logger.debug({ count: reminders.length }, 'Reminders saved to disk');
+    logger.info({ count: reminders.length }, 'Reminders saved to disk');
   } catch (err) {
     logger.error({ err }, 'Failed to save reminders to disk');
   }

@@ -8,12 +8,15 @@ import makeWASocket, {
   DisconnectReason,
   proto,
   type Contact,
+  type Chat,
+  type WAMessage,
+  type WAMessageKey,
   type AuthenticationState,
 } from '@whiskeysockets/baileys';
 import type { Boom } from '@hapi/boom';
 import fs from 'fs';
 import path from 'path';
-import pino from 'pino';
+import { logger, baileysLogger } from '../utils/logger.js';
 import type { WhatsAppSession, SessionEventCallback, SessionEvent } from '../types/whatsapp.js';
 
 // Active sessions keyed by uid
@@ -47,7 +50,7 @@ function persistContacts(uid: string): void {
   try {
     const data = Object.fromEntries(store);
     fs.writeFileSync(contactsCachePath(uid), JSON.stringify(data), 'utf-8');
-    logger.debug({ uid, count: store.size }, 'Persisted contacts to disk');
+    logger.info({ uid, count: store.size }, 'Persisted contacts to disk');
   } catch (err) {
     logger.error({ uid, err }, 'Failed to persist contacts to disk');
   }
@@ -73,10 +76,6 @@ function loadCachedContacts(uid: string): void {
 // SSE listeners keyed by uid (multiple browsers can listen)
 const listeners = new Map<string, Set<SessionEventCallback>>();
 
-const logger = pino({ level: process.env.LOG_LEVEL || 'info' });
-
-// Baileys internal logger — errors only to keep pm2 logs clean
-const baileysLogger = pino({ level: 'error' });
 
 /** Emit a session event to all registered SSE listeners for this uid */
 function emit(uid: string, event: SessionEvent): void {
@@ -169,17 +168,7 @@ export async function initSession(uid: string): Promise<void> {
     version: [2, 3000, 1033893291],
     browser: ['Omi WhatsApp', 'Chrome', '1.0.0'],
 
-    // Performance: skip FULL history sync but allow types that carry contacts.
-    // Without these, messaging-history.set never fires and contacts never populate.
     syncFullHistory: false,
-    shouldSyncHistoryMessage: (msg) => {
-      const type = msg.syncType;
-      const { HistorySyncType } = proto.HistorySync;
-      return type === HistorySyncType.PUSH_NAME
-        || type === HistorySyncType.INITIAL_BOOTSTRAP
-        || type === HistorySyncType.RECENT
-        || type === HistorySyncType.NON_BLOCKING_DATA;
-    },
     markOnlineOnConnect: false,
     fireInitQueries: false,
     generateHighQualityLinkPreview: false,
@@ -210,7 +199,7 @@ export async function initSession(uid: string): Promise<void> {
       session.qr = qr;
       session.connected = false;
       emit(uid, { type: 'qr', data: qr });
-      logger.info({ uid }, 'New QR code generated');
+      logger.debug({ uid }, 'New QR code generated');
     }
 
     if (connection === 'open') {
@@ -250,7 +239,7 @@ export async function initSession(uid: string): Promise<void> {
       }
 
       const delayMs = Math.min(BASE_BACKOFF_MS * 2 ** (state.attempts - 1), MAX_BACKOFF_MS);
-      logger.info({ uid, statusCode, attempt: state.attempts, delayMs },
+      logger.debug({ uid, statusCode, attempt: state.attempts, delayMs },
         'Reconnecting with backoff...');
 
       state.timer = setTimeout(() => {
@@ -264,14 +253,29 @@ export async function initSession(uid: string): Promise<void> {
   // Persist credentials on update
   socket.ev.on('creds.update', saveCreds);
 
-  // Collect contacts from messaging history sync
-  socket.ev.on('messaging-history.set', ({ contacts }) => {
+  // Collect contacts, chats, and messages from history sync.
+  // Chats carry the user-saved contact name (address book) in their `name` / `displayName`
+  // fields, which contacts alone don't always include.
+  socket.ev.on('messaging-history.set', ({ contacts, chats, messages, syncType }) => {
+    // add a logger info here
+    logger.info({ uid, contacts: contacts.length, chats: chats.length, messages: messages.length, syncType }, 'History sync received');
     const store = contactStore.get(uid)!;
+
     for (const contact of contacts) {
       store.set(contact.id, contact);
     }
-    logger.debug({ uid, synced: contacts.length, total: store.size }, 'Contacts synced from history');
-    persistContacts(uid);
+
+    // Enrich contacts with names from chat metadata (runs async to not block)
+    setImmediate(() => {
+      enrichContactsFromChats(uid, store, chats);
+      enrichContactsFromMessages(uid, store, messages);
+      persistContacts(uid);
+    });
+
+    logger.info(
+      { uid, contacts: contacts.length, chats: chats.length, messages: messages.length, syncType, total: store.size },
+      'History sync received',
+    );
   });
 
   // Collect contacts as they arrive
@@ -284,16 +288,113 @@ export async function initSession(uid: string): Promise<void> {
     persistContacts(uid);
   });
 
-  // Update contacts
+  // Update contacts — also creates entries for contacts not yet in the store
   socket.ev.on('contacts.update', (updates) => {
     const store = contactStore.get(uid)!;
+    let changed = false;
     for (const update of updates) {
-      const existing = store.get(update.id!);
-      if (existing) {
-        store.set(update.id!, { ...existing, ...update } as Contact);
-      }
+      if (!update.id) continue;
+      const existing = store.get(update.id);
+      store.set(update.id, { ...existing, ...update, id: update.id } as Contact);
+      changed = true;
+    }
+    if (changed) {
+      persistContacts(uid);
     }
   });
+}
+
+// ---------------------------------------------------------------------------
+// Contact enrichment from chats and messages
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract user-saved contact names from chat metadata.
+ * Chat.name / Chat.displayName contain the name the user saved in their
+ * phone contacts — the address book name we want for matching.
+ */
+function enrichContactsFromChats(uid: string, store: Map<string, Contact>, chats: Chat[]): void {
+  let enriched = 0;
+  for (const chat of chats) {
+    const jid = chat.id;
+    if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') continue;
+
+    const chatName = chat.name || (chat as any).displayName;
+    if (!chatName) continue;
+
+    const existing = store.get(jid);
+    // Only enrich if we don't already have a user-saved name
+    if (existing && existing.name) continue;
+
+    store.set(jid, { ...existing, id: jid, name: chatName } as Contact);
+    enriched++;
+  }
+
+  if (enriched > 0) {
+    logger.info({ uid, enriched }, 'Contacts enriched from chat metadata');
+  }
+}
+
+/**
+ * Extract contact names from message pushName fields.
+ * Each WAMessage.key.participant or key.remoteJid paired with pushName
+ * gives us the sender's self-chosen name — useful as a fallback.
+ */
+function enrichContactsFromMessages(uid: string, store: Map<string, Contact>, messages: WAMessage[]): void {
+  let enriched = 0;
+  for (const msg of messages) {
+    const pushName = msg.pushName;
+    if (!pushName) continue;
+
+    // Determine the JID of the message sender
+    const jid = msg.key?.participant || msg.key?.remoteJid;
+    if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') continue;
+
+    const existing = store.get(jid);
+    // Only set notify (push name) if we don't already have one
+    if (existing?.notify) continue;
+
+    store.set(jid, { ...existing, id: jid, notify: pushName } as Contact);
+    enriched++;
+  }
+
+  if (enriched > 0) {
+    logger.info({ uid, enriched }, 'Contacts enriched from message push names');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// On-demand history sync
+// ---------------------------------------------------------------------------
+
+/**
+ * Request on-demand history sync from the main device.
+ * Fetches older messages beyond the initial sync. Results arrive via
+ * the `messaging-history.set` event asynchronously.
+ */
+export async function requestHistorySync(uid: string, count = 50): Promise<void> {
+  const session = sessions.get(uid);
+  if (!session?.connected) {
+    throw new Error(`WhatsApp not connected for uid: ${uid}`);
+  }
+
+  const store = contactStore.get(uid);
+  if (!store || store.size === 0) {
+    throw new Error('No contacts synced yet — initial sync may still be in progress');
+  }
+
+  // Find the oldest message key/timestamp we have from the contact store's
+  // associated chats. We need a reference point for fetchMessageHistory.
+  // Use a sentinel oldest key — Baileys will fetch from the beginning.
+  const oldestMsgKey: WAMessageKey = {
+    remoteJid: '0@s.whatsapp.net',
+    id: '',
+    fromMe: false,
+  };
+  const oldestMsgTimestamp = 0;
+
+  await session.socket.fetchMessageHistory(count, oldestMsgKey, oldestMsgTimestamp);
+  logger.info({ uid, count }, 'On-demand history sync requested');
 }
 
 /** Get the session for a uid, or undefined if not initialized. */
@@ -350,7 +451,7 @@ export function hasContacts(uid: string): boolean {
 export async function waitForContacts(uid: string, retries = 10, delayMs = 2000): Promise<boolean> {
   for (let i = 0; i < retries; i++) {
     if (hasContacts(uid)) return true;
-    logger.debug({ uid, attempt: i + 1, retries }, 'Waiting for contacts to sync');
+    logger.info({ uid, attempt: i + 1, retries }, 'Waiting for contacts to sync');
     await new Promise((r) => setTimeout(r, delayMs));
   }
   return hasContacts(uid);
