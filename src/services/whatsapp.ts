@@ -35,42 +35,115 @@ const NON_RETRIABLE_CODES = new Set([
   405,                         // WhatsApp server-side rejection (registration blocked)
 ]);
 
-// Contacts keyed by uid → jid → Contact
+// ---------------------------------------------------------------------------
+// Contact store — keyed by uid → phone JID → Contact
+// ---------------------------------------------------------------------------
+
+/** Canonical contact store: always keyed by phone-number JID (@s.whatsapp.net). */
 const contactStore = new Map<string, Map<string, Contact>>();
 
-/** Path to the contacts cache file for a uid. */
+/**
+ * Bidirectional LID ↔ JID map per uid.
+ * WhatsApp's newer multi-device protocol assigns each contact an opaque
+ * "Linked ID" (LID). Many events (contacts.update, messages) reference
+ * contacts by LID instead of phone JID. We maintain a mapping so we can
+ * resolve LIDs back to phone JIDs for storage and matching.
+ */
+const lidToJid = new Map<string, Map<string, string>>();
+
 function contactsCachePath(uid: string): string {
   return path.join('sessions', uid, 'contacts.json');
 }
 
-/** Save contacts to disk so they survive restarts. */
+/** Persist the contact store and LID map to disk. */
 function persistContacts(uid: string): void {
   const store = contactStore.get(uid);
   if (!store || store.size === 0) return;
   try {
-    const data = Object.fromEntries(store);
-    fs.writeFileSync(contactsCachePath(uid), JSON.stringify(data), 'utf-8');
+    const contacts = Object.fromEntries(store);
+    const lidMap = Object.fromEntries(lidToJid.get(uid) ?? new Map());
+    const payload = { contacts, lidMap };
+    fs.writeFileSync(contactsCachePath(uid), JSON.stringify(payload), 'utf-8');
     logger.info({ uid, count: store.size }, 'Persisted contacts to disk');
   } catch (err) {
     logger.error({ uid, err }, 'Failed to persist contacts to disk');
   }
 }
 
-/** Load contacts from disk cache. */
+/** Load contacts and LID map from disk cache. */
 function loadCachedContacts(uid: string): void {
   const filePath = contactsCachePath(uid);
   if (!fs.existsSync(filePath)) return;
   try {
-    const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+
+    // Support both old format (flat {jid: Contact}) and new {contacts, lidMap}
+    const contactData = raw.contacts ?? raw;
+    const lidMapData: Record<string, string> = raw.lidMap ?? {};
+
     const store = contactStore.get(uid) ?? new Map<string, Contact>();
-    for (const [jid, contact] of Object.entries(data)) {
+    for (const [jid, contact] of Object.entries(contactData)) {
       store.set(jid, contact as Contact);
     }
     contactStore.set(uid, store);
-    logger.debug({ uid, count: store.size }, 'Loaded cached contacts from disk');
+
+    const lmap = lidToJid.get(uid) ?? new Map<string, string>();
+    for (const [lid, jid] of Object.entries(lidMapData)) {
+      lmap.set(lid, jid);
+    }
+    lidToJid.set(uid, lmap);
+
+    logger.debug({ uid, contacts: store.size, lidMappings: lmap.size }, 'Loaded cached contacts from disk');
   } catch (err) {
     logger.error({ uid, err }, 'Failed to load cached contacts from disk');
   }
+}
+
+/** Register a LID ↔ JID mapping. */
+function registerLidMapping(uid: string, lid: string, jid: string): void {
+  const lmap = lidToJid.get(uid) ?? new Map<string, string>();
+  lmap.set(lid, jid);
+  lidToJid.set(uid, lmap);
+}
+
+/** Resolve a LID to a phone-number JID, or return the input if it's already a JID. */
+function resolveToJid(uid: string, id: string): string | undefined {
+  if (id.endsWith('@s.whatsapp.net')) return id;
+  if (id.endsWith('@lid')) return lidToJid.get(uid)?.get(id);
+  return undefined;
+}
+
+/**
+ * Upsert a contact into the store, merging with any existing entry.
+ * Handles LID→JID resolution: if the contact has a LID key but we know
+ * the corresponding JID, we store it under the JID instead.
+ */
+function upsertContact(uid: string, contact: Contact): void {
+  const store = contactStore.get(uid)!;
+
+  // If contact carries a lid field, register the mapping
+  if (contact.id.endsWith('@s.whatsapp.net') && (contact as any).lid) {
+    registerLidMapping(uid, (contact as any).lid, contact.id);
+  }
+
+  // Resolve the storage key to a phone-number JID
+  let jid = resolveToJid(uid, contact.id);
+
+  if (!jid) {
+    // Unknown LID with no JID mapping — can't do anything useful yet.
+    // Store minimally so we can merge later if the mapping appears.
+    return;
+  }
+
+  const existing = store.get(jid);
+  const merged: Contact = { ...existing, ...contact, id: jid };
+
+  // Prefer phonebook name (name) over profile name (notify)
+  if (existing?.name && !contact.name) {
+    merged.name = existing.name;
+  }
+
+  store.set(jid, merged);
 }
 
 // SSE listeners keyed by uid (multiple browsers can listen)
@@ -129,28 +202,27 @@ async function useMultiFileAuthStateWithCleanup(
   state.keys.set = (data) => {
     originalSet(data);
 
-    // After pre-keys are written, clean up keys below firstUnuploadedPreKeyId —
-    // those have already been uploaded to WhatsApp and will never be used again.
-    const firstUnuploaded = state.creds.firstUnuploadedPreKeyId ?? 0;
-    if (firstUnuploaded > 1) {
-      // Run cleanup asynchronously so it doesn't block the auth flow
-      setImmediate(() => {
-        try {
-          const files = fs.readdirSync(folder);
-          for (const file of files) {
-            const match = file.match(/^pre-key-(\d+)\.json$/);
-            if (match) {
-              const keyId = parseInt(match[1]!, 10);
-              if (keyId < firstUnuploaded) {
-                fs.unlinkSync(path.join(folder, file));
-              }
-            }
-          }
-        } catch {
-          // Non-fatal — next cleanup cycle will catch leftovers
-        }
-      });
-    }
+    // Pre-key cleanup disabled by request: keep all pre-key files on disk.
+    // const firstUnuploaded = state.creds.firstUnuploadedPreKeyId ?? 0;
+    // if (firstUnuploaded > 1) {
+    //   // Run cleanup asynchronously so it doesn't block the auth flow
+    //   setImmediate(() => {
+    //     try {
+    //       const files = fs.readdirSync(folder);
+    //       for (const file of files) {
+    //         const match = file.match(/^pre-key-(\d+)\.json$/);
+    //         if (match) {
+    //           const keyId = parseInt(match[1]!, 10);
+    //           if (keyId < firstUnuploaded) {
+    //             fs.unlinkSync(path.join(folder, file));
+    //           }
+    //         }
+    //       }
+    //     } catch {
+    //       // Non-fatal — next cleanup cycle will catch leftovers
+    //     }
+    //   });
+    // }
   };
 
   return { state, saveCreds };
@@ -274,51 +346,50 @@ export async function initSession(uid: string): Promise<void> {
   socket.ev.on('creds.update', saveCreds);
 
   // Collect contacts, chats, and messages from history sync.
-  // Chats carry the user-saved contact name (address book) in their `name` / `displayName`
-  // fields, which contacts alone don't always include.
   socket.ev.on('messaging-history.set', ({ contacts, chats, messages, syncType }) => {
-    // add a logger info here
     logger.info({ uid, contacts: contacts.length, chats: chats.length, messages: messages.length, syncType }, 'History sync received');
-    const store = contactStore.get(uid)!;
 
     for (const contact of contacts) {
-      store.set(contact.id, contact);
+      upsertContact(uid, contact);
     }
 
-    // Enrich contacts with names from chat metadata (runs async to not block)
+    // Enrich from chat metadata and message push names (async to not block)
     setImmediate(() => {
-      enrichContactsFromChats(uid, store, chats);
-      enrichContactsFromMessages(uid, store, messages);
+      enrichContactsFromChats(uid, chats);
+      enrichContactsFromMessages(uid, messages);
       persistContacts(uid);
     });
-
-    logger.info(
-      { uid, contacts: contacts.length, chats: chats.length, messages: messages.length, syncType, total: store.size },
-      'History sync received',
-    );
   });
 
-  // Collect contacts as they arrive
+  // contacts.upsert — main source of phonebook names
   socket.ev.on('contacts.upsert', (contacts) => {
-    const store = contactStore.get(uid)!;
+
     for (const contact of contacts) {
-      store.set(contact.id, contact);
+      upsertContact(uid, contact);
     }
-    logger.debug({ uid, upserted: contacts.length, total: store.size }, 'Contacts upserted');
+    logger.info({ uid, upserted: contacts.length, total: contactStore.get(uid)!.size }, 'Contacts upserted');
     persistContacts(uid);
   });
 
-  // Update contacts — also creates entries for contacts not yet in the store
+  // contacts.update — incremental updates, often LID-keyed
   socket.ev.on('contacts.update', (updates) => {
-    const store = contactStore.get(uid)!;
+
     let changed = false;
     for (const update of updates) {
       if (!update.id) continue;
-      const existing = store.get(update.id);
-      store.set(update.id, { ...existing, ...update, id: update.id } as Contact);
+      upsertContact(uid, update as Contact);
       changed = true;
     }
     if (changed) {
+      persistContacts(uid);
+    }
+  });
+
+  // messages.upsert — live messages can reveal new numbers and push names.
+  socket.ev.on('messages.upsert', ({ messages }) => {
+
+    const changed = enrichContactsFromMessages(uid, messages, true);
+    if (changed > 0) {
       persistContacts(uid);
     }
   });
@@ -330,23 +401,25 @@ export async function initSession(uid: string): Promise<void> {
 
 /**
  * Extract user-saved contact names from chat metadata.
- * Chat.name / Chat.displayName contain the name the user saved in their
- * phone contacts — the address book name we want for matching.
+ * Chat.name / Chat.displayName often contain the phonebook name.
  */
-function enrichContactsFromChats(uid: string, store: Map<string, Contact>, chats: Chat[]): void {
+function enrichContactsFromChats(uid: string, chats: Chat[]): void {
+  const store = contactStore.get(uid)!;
   let enriched = 0;
   for (const chat of chats) {
-    const jid = chat.id;
-    if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') continue;
+    const id = chat.id;
+    if (!id || id.endsWith('@g.us') || id === 'status@broadcast') continue;
 
     const chatName = chat.name || (chat as any).displayName;
     if (!chatName) continue;
 
-    const existing = store.get(jid);
-    // Only enrich if we don't already have a user-saved name
-    if (existing && existing.name) continue;
+    const jid = resolveToJid(uid, id);
+    if (!jid) continue;
 
-    store.set(jid, { ...existing, id: jid, name: chatName } as Contact);
+    const existing = store.get(jid);
+    if (existing?.name) continue;
+
+    upsertContact(uid, { id, name: chatName } as Contact);
     enriched++;
   }
 
@@ -357,30 +430,39 @@ function enrichContactsFromChats(uid: string, store: Map<string, Contact>, chats
 
 /**
  * Extract contact names from message pushName fields.
- * Each WAMessage.key.participant or key.remoteJid paired with pushName
- * gives us the sender's self-chosen name — useful as a fallback.
+ * pushName is the sender's self-chosen WhatsApp name — useful as a fallback.
  */
-function enrichContactsFromMessages(uid: string, store: Map<string, Contact>, messages: WAMessage[]): void {
+function enrichContactsFromMessages(uid: string, messages: WAMessage[], includeBareNumbers = false): number {
+  const store = contactStore.get(uid)!;
   let enriched = 0;
   for (const msg of messages) {
+    const id = msg.key?.participant || msg.key?.remoteJid;
+    if (!id || id.endsWith('@g.us') || id === 'status@broadcast') continue;
+
+    const jid = resolveToJid(uid, id);
+    if (!jid) continue;
+
+    const existing = store.get(jid);
+    if (!existing && includeBareNumbers) {
+      // Keep a minimal entry for newly seen numbers even before names arrive.
+      upsertContact(uid, { id } as Contact);
+      enriched++;
+    }
+
     const pushName = msg.pushName;
     if (!pushName) continue;
 
-    // Determine the JID of the message sender
-    const jid = msg.key?.participant || msg.key?.remoteJid;
-    if (!jid || jid.endsWith('@g.us') || jid === 'status@broadcast') continue;
+    const latest = store.get(jid);
+    if (latest?.notify) continue;
 
-    const existing = store.get(jid);
-    // Only set notify (push name) if we don't already have one
-    if (existing?.notify) continue;
-
-    store.set(jid, { ...existing, id: jid, notify: pushName } as Contact);
+    upsertContact(uid, { id, notify: pushName } as Contact);
     enriched++;
   }
 
   if (enriched > 0) {
     logger.info({ uid, enriched }, 'Contacts enriched from message push names');
   }
+  return enriched;
 }
 
 // ---------------------------------------------------------------------------
