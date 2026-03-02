@@ -6,6 +6,7 @@
  * POST /tools/send_meeting_notes      → Send meeting notes to self on WhatsApp
  * POST /tools/send_recap_to_contact   → Send meeting recap to a specific contact
  * POST /tools/set_reminder            → Set a timed WhatsApp reminder (self or contact)
+ * POST /tools/save_contact            → Save a WhatsApp contact by name + phone number
  *
  * These endpoints follow the Omi Chat Tools spec:
  * https://docs.omi.me/doc/developer/apps/ChatTools
@@ -15,13 +16,18 @@ import { Router } from 'express';
 import { logger } from '../utils/logger.js';
 import { findContact } from '../services/contact-matcher.js';
 import { scheduleReminder } from '../services/reminder.js';
+import { getSavedContacts, saveContact } from '../services/saved-contacts.js';
 import {
   isConnected,
   sendSelfMessage,
   sendMessage,
   getContacts,
   waitForContacts,
+  checkWhatsAppNumber,
 } from '../services/whatsapp.js';
+
+const CONTACT_NOT_FOUND_HINT = 'You can save this contact by saying: "Save contact NAME with number +COUNTRYCODE_NUMBER"';
+const E164_REGEX = /^\+[1-9]\d{6,14}$/;
 
 // ---------------------------------------------------------------------------
 // Manifest
@@ -119,6 +125,28 @@ function buildManifest(baseUrl: string) {
         auth_required: true,
         status_message: 'Setting reminder...',
       },
+      {
+        name: 'save_whatsapp_contact',
+        description:
+          'Save a WhatsApp contact with a name and phone number (with country code). Use this when the user says "Save +919876543210 as Rajesh", "Add contact Mom with number +14155551234", or "Save this number as John". Also use this when a previous message failed because a contact was not found and the user provides the number.',
+        endpoint: `${baseUrl}/tools/save_contact`,
+        method: 'POST',
+        parameters: {
+          properties: {
+            contact_name: {
+              type: 'string',
+              description: 'The name to save the contact as (e.g., "Rajesh", "Mom", "John")',
+            },
+            phone_number: {
+              type: 'string',
+              description: 'The phone number with country code (e.g., "+919876543210", "+14155551234")',
+            },
+          },
+          required: ['contact_name', 'phone_number'],
+        },
+        auth_required: true,
+        status_message: 'Saving contact...',
+      },
     ],
   };
 }
@@ -177,13 +205,14 @@ toolsRouter.post('/send_message', async (req, res) => {
   }
 
   const contacts = getContacts(uid);
-  const match = findContact(contacts, contactName);
+  const saved = getSavedContacts(uid);
+  const match = findContact(contacts, contactName, saved);
 
   logger.info({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
 
   if (!match) {
     logger.warn({ uid, contactName }, 'Chat tool: send_message — contact not found');
-    res.status(404).json({ error: `Could not find a WhatsApp contact named "${contactName}". Check the spelling or use their saved name.` });
+    res.status(404).json({ error: `Could not find a WhatsApp contact named "${contactName}". ${CONTACT_NOT_FOUND_HINT}` });
     return;
   }
 
@@ -278,13 +307,14 @@ toolsRouter.post('/send_recap_to_contact', async (req, res) => {
   }
 
   const contacts = getContacts(uid);
-  const match = findContact(contacts, contactName);
+  const saved = getSavedContacts(uid);
+  const match = findContact(contacts, contactName, saved);
 
   logger.info({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
 
   if (!match) {
     logger.warn({ uid, contactName }, 'Chat tool: send_recap_to_contact — contact not found');
-    res.status(404).json({ error: `Could not find a WhatsApp contact named "${contactName}". Check the spelling or use their saved name.` });
+    res.status(404).json({ error: `Could not find a WhatsApp contact named "${contactName}". ${CONTACT_NOT_FOUND_HINT}` });
     return;
   }
 
@@ -346,13 +376,14 @@ toolsRouter.post('/set_reminder', async (req, res) => {
     }
 
     const contacts = getContacts(uid);
-    const match = findContact(contacts, contactName);
+    const saved = getSavedContacts(uid);
+    const match = findContact(contacts, contactName, saved);
 
     logger.info({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
 
     if (!match) {
       logger.warn({ uid, contactName }, 'Chat tool: set_reminder — contact not found');
-      res.status(404).json({ error: `Could not find a WhatsApp contact named "${contactName}". Check the spelling or use their saved name.` });
+      res.status(404).json({ error: `Could not find a WhatsApp contact named "${contactName}". ${CONTACT_NOT_FOUND_HINT}` });
       return;
     }
 
@@ -375,4 +406,63 @@ toolsRouter.post('/set_reminder', async (req, res) => {
   });
 
   res.json({ result: `Reminder set! "${message}" will be sent to ${targetName} in ${timeLabel}.` });
+});
+
+// ---------------------------------------------------------------------------
+// POST /tools/save_contact
+// ---------------------------------------------------------------------------
+toolsRouter.post('/save_contact', async (req, res) => {
+  const data = req.body;
+
+  const uid = data?.uid || (req.query.uid as string);
+  const contactName = data?.contact_name?.trim();
+  const phoneNumber = data?.phone_number?.trim();
+
+  if (!uid) {
+    res.status(400).json({ error: 'Missing uid parameter' });
+    return;
+  }
+  if (!contactName) {
+    res.status(400).json({ error: 'Missing required parameter: contact_name' });
+    return;
+  }
+  if (!phoneNumber) {
+    res.status(400).json({ error: 'Missing required parameter: phone_number (with country code, e.g. +14155551234)' });
+    return;
+  }
+
+  const normalized = phoneNumber.replace(/[\s\-()]/g, '');
+  if (!E164_REGEX.test(normalized)) {
+    res.status(400).json({
+      error: 'Invalid phone number format. Use the full number with country code (e.g. +14155551234, +919876543210).',
+    });
+    return;
+  }
+
+  logger.info({ uid, contactName, phone: normalized }, 'Chat tool: save_contact request received');
+
+  if (!isConnected(uid)) {
+    logger.warn({ uid }, 'Chat tool: save_contact — WhatsApp not connected');
+    res.status(401).json({
+      error: 'WhatsApp not connected. Please link your WhatsApp account first in the app setup.',
+    });
+    return;
+  }
+
+  try {
+    const check = await checkWhatsAppNumber(uid, normalized);
+    if (!check.exists || !check.jid) {
+      res.status(404).json({
+        error: `The number ${normalized} is not registered on WhatsApp. Please check the number and try again.`,
+      });
+      return;
+    }
+
+    const contact = saveContact(uid, contactName, check.jid);
+    logger.info({ uid, contactName, jid: check.jid }, 'Chat tool: contact saved');
+    res.json({ result: `Contact "${contactName}" (${normalized}) saved successfully. You can now send messages to ${contactName} by name.` });
+  } catch (err) {
+    logger.error({ uid, contactName, phone: normalized, err }, 'Chat tool: failed to save contact');
+    res.status(500).json({ error: 'Failed to save contact. Please try again.' });
+  }
 });

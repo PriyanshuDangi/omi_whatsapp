@@ -86,8 +86,10 @@ await run('3. Setup page (HTML)', async () => {
 await run('4. Tool manifest', async () => {
   const { json } = await request('GET', '/.well-known/omi-tools.json');
   assert(Array.isArray(json.tools), 'Expected tools array');
-  assert(json.tools.length >= 4, `Expected ≥4 tools, got ${json.tools.length}`);
-  console.log(`     → ${json.tools.length} tools: ${json.tools.map(t => t.name).join(', ')}`);
+  assert(json.tools.length >= 5, `Expected ≥5 tools, got ${json.tools.length}`);
+  const names = json.tools.map(t => t.name);
+  assert(names.includes('save_whatsapp_contact'), 'Missing save_whatsapp_contact tool');
+  console.log(`     → ${json.tools.length} tools: ${names.join(', ')}`);
 });
 
 await run('5. Webhook — memory recap', async () => {
@@ -194,23 +196,59 @@ if (CONTACT) {
   console.log('  –  11. Chat tool — set reminder to contact (SKIPPED, no TEST_CONTACT)');
 }
 
+// ─── Contacts ────────────────────────────────────────────────────────────────
+
+await run('12. Contacts — list saved contacts (initially)', async () => {
+  const { json } = await request('GET', `/contacts?uid=${UID}`);
+  assert(Array.isArray(json.contacts), 'Expected contacts array');
+  console.log(`     → ${json.contacts.length} saved contact(s)`);
+});
+
+await run('13. Contacts — save contact (invalid phone)', async () => {
+  await request('POST', `/contacts/save?uid=${UID}`, {
+    body: { name: 'Bad Number', phone: '12345' },
+    expectedStatus: 400,
+  });
+});
+
+await run('14. Contacts — save contact (missing name)', async () => {
+  await request('POST', `/contacts/save?uid=${UID}`, {
+    body: { phone: '+14155551234' },
+    expectedStatus: 400,
+  });
+});
+
+await run('15. Chat tool — save_contact (invalid phone)', async () => {
+  await request('POST', `/tools/save_contact?uid=${UID}`, {
+    body: { uid: UID, contact_name: 'Test', phone_number: 'abc' },
+    expectedStatus: 400,
+  });
+});
+
+await run('16. Contacts — delete non-existent contact', async () => {
+  await request('DELETE', `/contacts?uid=${UID}`, {
+    body: { phone: '+10000000000' },
+    expectedStatus: 404,
+  });
+});
+
 // ─── QR code ─────────────────────────────────────────────────────────────────
 
 const QR_UID = 'test-qr-uid';
 
-await run('12. QR code — setup page triggers session init', async () => {
+await run('17. QR code — setup page triggers session init', async () => {
   // Hitting /setup kicks off Baileys session init in the background
   const { text } = await request('GET', `/setup?uid=${QR_UID}`);
   assert(text.includes('<'), 'Expected HTML response from setup page');
 });
 
-await run('13. QR code — setup status is false (not yet linked)', async () => {
+await run('18. QR code — setup status is false (not yet linked)', async () => {
   const { json } = await request('GET', `/setup/status?uid=${QR_UID}`);
   assert(typeof json.is_setup_completed === 'boolean', 'Missing is_setup_completed field');
   assert(json.is_setup_completed === false, `Expected false for fresh UID, got ${json.is_setup_completed}`);
 });
 
-await run('14. QR code — SSE stream emits a QR data URL', async () => {
+await run('19. QR code — SSE stream emits a QR data URL', async () => {
   const TIMEOUT_MS = 20_000;
 
   const qrDataUrl = await new Promise(async (resolve, reject) => {
@@ -279,15 +317,15 @@ await run('14. QR code — SSE stream emits a QR data URL', async () => {
 
 // ─── Error cases ─────────────────────────────────────────────────────────────
 
-await run('15. Error — missing UID on webhook', async () => {
+await run('20. Error — missing UID on webhook', async () => {
   await request('POST', '/webhook/memory', { body: {}, expectedStatus: 400 });
 });
 
-await run('16. Error — invalid UID (path traversal)', async () => {
+await run('21. Error — invalid UID (path traversal)', async () => {
   await request('GET', '/setup/status?uid=../../../etc/passwd', { expectedStatus: 400 });
 });
 
-await run('17. Error — unknown session on /tools', async () => {
+await run('22. Error — unknown session on /tools', async () => {
   await request('POST', '/tools/send_message?uid=nonexistent-uid-12345', {
     body: { uid: 'nonexistent-uid-12345', contact_name: 'Someone', message: 'fail' },
     expectedStatus: 403,

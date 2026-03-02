@@ -146,6 +146,127 @@
       background: #25d366;
       color: #fff;
     }
+
+    .btn-secondary {
+      background: #1a1a2e;
+      color: #f5f5f5;
+      border: 1px solid #333;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* Contacts panel */
+    .contacts-panel {
+      display: none;
+      margin-top: 1.5rem;
+      text-align: left;
+      width: 100%;
+    }
+
+    .contacts-panel h3 {
+      font-size: 1.1rem;
+      margin-bottom: 1rem;
+      text-align: center;
+      color: #ccc;
+    }
+
+    .contact-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .contact-form input {
+      padding: 0.6rem 0.8rem;
+      border-radius: 8px;
+      border: 1px solid #333;
+      background: #1a1a2e;
+      color: #f5f5f5;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .contact-form input:focus {
+      border-color: #25d366;
+    }
+
+    .contact-form input::placeholder {
+      color: #666;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .form-row input { flex: 1; }
+
+    #add-contact-btn {
+      align-self: stretch;
+    }
+
+    #contact-feedback {
+      font-size: 0.85rem;
+      min-height: 1.2rem;
+      text-align: center;
+    }
+
+    .feedback-success { color: #25d366; }
+    .feedback-error { color: #e74c3c; }
+
+    .contact-list {
+      list-style: none;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+
+    .contact-list li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 0.6rem;
+      border-bottom: 1px solid #1a1a2e;
+      font-size: 0.9rem;
+    }
+
+    .contact-list li:last-child { border-bottom: none; }
+
+    .contact-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .contact-info .name { color: #f5f5f5; font-weight: 500; }
+    .contact-info .phone { color: #888; font-size: 0.8rem; }
+
+    .contact-list .delete-btn {
+      background: none;
+      border: none;
+      color: #e74c3c;
+      cursor: pointer;
+      font-size: 0.8rem;
+      padding: 0.3rem 0.5rem;
+      border-radius: 4px;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+
+    .contact-list .delete-btn:hover { opacity: 1; }
+
+    .empty-state {
+      text-align: center;
+      color: #666;
+      font-size: 0.85rem;
+      padding: 1rem 0;
+    }
   </style>
 </head>
 <body>
@@ -176,7 +297,24 @@
       <div class="checkmark">✓</div>
       <h2>WhatsApp Connected!</h2>
       <p>You're all set. Meeting recaps will now be sent to your WhatsApp.<br />You can close this page.</p>
-      <button class="btn btn-danger" id="logout-btn">Logout WhatsApp</button>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="manage-contacts-btn">Manage Contacts</button>
+        <button class="btn btn-danger" id="logout-btn">Logout WhatsApp</button>
+      </div>
+
+      <!-- Contacts panel (toggled by Manage Contacts button) -->
+      <div class="contacts-panel" id="contacts-panel">
+        <h3>Saved Contacts</h3>
+        <div class="contact-form">
+          <div class="form-row">
+            <input type="text" id="contact-name" placeholder="Name (e.g. Mom)" autocomplete="off" />
+            <input type="tel" id="contact-phone" placeholder="+1 415 555 1234" autocomplete="off" />
+          </div>
+          <button class="btn btn-primary" id="add-contact-btn">Add Contact</button>
+          <div id="contact-feedback"></div>
+        </div>
+        <ul class="contact-list" id="contact-list"></ul>
+      </div>
     </div>
 
     <!-- Disconnected view (terminal — logged out or server rejected) -->
@@ -190,25 +328,36 @@
 
   <script>
     (function () {
-      const params = new URLSearchParams(window.location.search);
-      const uid = params.get('uid');
+      var params = new URLSearchParams(window.location.search);
+      var uid = params.get('uid');
       if (!uid) {
         document.getElementById('status').textContent = 'Error: missing uid parameter';
         return;
       }
 
-      const qrImg = document.getElementById('qr-img');
-      const spinner = document.getElementById('spinner');
-      const setupView = document.getElementById('setup-view');
-      const successView = document.getElementById('success-view');
-      const disconnectedView = document.getElementById('disconnected-view');
-      const disconnectedTitle = document.getElementById('disconnected-title');
-      const disconnectedMsg = document.getElementById('disconnected-msg');
-      const statusEl = document.getElementById('status');
-      const logoutBtn = document.getElementById('logout-btn');
-      const reconnectBtn = document.getElementById('reconnect-btn');
+      var uidParam = '?uid=' + encodeURIComponent(uid);
 
-      const TERMINAL_REASONS = ['logged_out', 'server_rejected'];
+      var qrImg = document.getElementById('qr-img');
+      var spinner = document.getElementById('spinner');
+      var setupView = document.getElementById('setup-view');
+      var successView = document.getElementById('success-view');
+      var disconnectedView = document.getElementById('disconnected-view');
+      var disconnectedTitle = document.getElementById('disconnected-title');
+      var disconnectedMsg = document.getElementById('disconnected-msg');
+      var statusEl = document.getElementById('status');
+      var logoutBtn = document.getElementById('logout-btn');
+      var reconnectBtn = document.getElementById('reconnect-btn');
+
+      // Contact management elements
+      var manageContactsBtn = document.getElementById('manage-contacts-btn');
+      var contactsPanel = document.getElementById('contacts-panel');
+      var contactNameInput = document.getElementById('contact-name');
+      var contactPhoneInput = document.getElementById('contact-phone');
+      var addContactBtn = document.getElementById('add-contact-btn');
+      var contactFeedback = document.getElementById('contact-feedback');
+      var contactList = document.getElementById('contact-list');
+
+      var TERMINAL_REASONS = ['logged_out', 'server_rejected'];
 
       function showView(view) {
         setupView.style.display = view === 'setup' ? 'block' : 'none';
@@ -216,7 +365,8 @@
         disconnectedView.style.display = view === 'disconnected' ? 'flex' : 'none';
       }
 
-      var evtSource = new EventSource('/setup/events?uid=' + encodeURIComponent(uid));
+      // ── SSE connection ──────────────────────────────────────────────
+      var evtSource = new EventSource('/setup/events' + uidParam);
 
       evtSource.addEventListener('qr', function (e) {
         qrImg.src = e.data;
@@ -257,10 +407,11 @@
         statusEl.textContent = 'Connection lost. Refresh to retry.';
       };
 
+      // ── Logout ──────────────────────────────────────────────────────
       logoutBtn.addEventListener('click', function () {
         logoutBtn.disabled = true;
         logoutBtn.textContent = 'Logging out...';
-        fetch('/setup/logout?uid=' + encodeURIComponent(uid), { method: 'POST' })
+        fetch('/setup/logout' + uidParam, { method: 'POST' })
           .then(function () { window.location.reload(); })
           .catch(function () {
             logoutBtn.disabled = false;
@@ -270,8 +421,113 @@
       });
 
       reconnectBtn.addEventListener('click', function () {
-        window.location.href = '/setup?uid=' + encodeURIComponent(uid);
+        window.location.href = '/setup' + uidParam;
       });
+
+      // ── Contact management ──────────────────────────────────────────
+      manageContactsBtn.addEventListener('click', function () {
+        var isVisible = contactsPanel.style.display === 'block';
+        contactsPanel.style.display = isVisible ? 'none' : 'block';
+        manageContactsBtn.textContent = isVisible ? 'Manage Contacts' : 'Hide Contacts';
+        if (!isVisible) loadContacts();
+      });
+
+      function setFeedback(msg, isError) {
+        contactFeedback.textContent = msg;
+        contactFeedback.className = isError ? 'feedback-error' : 'feedback-success';
+      }
+
+      function clearFeedback() {
+        contactFeedback.textContent = '';
+        contactFeedback.className = '';
+      }
+
+      function loadContacts() {
+        fetch('/setup/contacts' + uidParam)
+          .then(function (r) { return r.json(); })
+          .then(function (data) { renderContacts(data.contacts || []); })
+          .catch(function () { renderContacts([]); });
+      }
+
+      function renderContacts(contacts) {
+        contactList.innerHTML = '';
+        if (contacts.length === 0) {
+          contactList.innerHTML = '<li class="empty-state">No saved contacts yet.</li>';
+          return;
+        }
+        contacts.forEach(function (c) {
+          var li = document.createElement('li');
+          li.innerHTML =
+            '<div class="contact-info">' +
+              '<span class="name">' + escapeHtml(c.name) + '</span>' +
+              '<span class="phone">' + escapeHtml(c.phone) + '</span>' +
+            '</div>';
+
+          var delBtn = document.createElement('button');
+          delBtn.className = 'delete-btn';
+          delBtn.textContent = 'Remove';
+          delBtn.addEventListener('click', function () { deleteContact(c.jid, li); });
+          li.appendChild(delBtn);
+          contactList.appendChild(li);
+        });
+      }
+
+      addContactBtn.addEventListener('click', function () {
+        var name = contactNameInput.value.trim();
+        var phone = contactPhoneInput.value.trim();
+        if (!name) { setFeedback('Please enter a name.', true); return; }
+        if (!phone) { setFeedback('Please enter a phone number with country code.', true); return; }
+
+        clearFeedback();
+        addContactBtn.disabled = true;
+        addContactBtn.textContent = 'Saving...';
+
+        fetch('/setup/contacts/save' + uidParam, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name, phone: phone }),
+        })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+          .then(function (res) {
+            if (!res.ok) {
+              setFeedback(res.json.error || 'Failed to save.', true);
+            } else {
+              setFeedback(res.json.result || 'Contact saved!', false);
+              contactNameInput.value = '';
+              contactPhoneInput.value = '';
+              loadContacts();
+            }
+          })
+          .catch(function () { setFeedback('Network error. Please try again.', true); })
+          .finally(function () {
+            addContactBtn.disabled = false;
+            addContactBtn.textContent = 'Add Contact';
+          });
+      });
+
+      function deleteContact(jid, li) {
+        var delBtn = li.querySelector('.delete-btn');
+        delBtn.disabled = true;
+        delBtn.textContent = '...';
+
+        fetch('/setup/contacts' + uidParam, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jid: jid }),
+        })
+          .then(function (r) { return r.json(); })
+          .then(function () { loadContacts(); })
+          .catch(function () {
+            delBtn.disabled = false;
+            delBtn.textContent = 'Remove';
+          });
+      }
+
+      function escapeHtml(s) {
+        var d = document.createElement('div');
+        d.textContent = s;
+        return d.innerHTML;
+      }
     })();
   </script>
 </body>
