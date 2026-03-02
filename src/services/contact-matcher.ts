@@ -117,8 +117,7 @@ export function findContact(
   let bestMatch: MatchedContact | null = null;
 
   for (const [jid, contact] of contacts) {
-    if (jid.endsWith('@g.us') || jid === 'status@broadcast') continue;
-    if (!jid.includes('@s.whatsapp.net') && !contact.phoneNumber) continue;
+    if (!jid.endsWith('@s.whatsapp.net')) continue;
 
     const variants = getNameVariants(contact);
     const displayName = getDisplayName(contact);

@@ -7,3 +7,4 @@ logs/
 auth_info*/
 *.js.map
 test-api.http
+debug
