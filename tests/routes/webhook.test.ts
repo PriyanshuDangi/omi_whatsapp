@@ -81,4 +81,34 @@ describe('POST /webhook/memory', () => {
     await new Promise((r) => setTimeout(r, 50));
     expect(mockSendSelfMessage).not.toHaveBeenCalled();
   });
+
+  it('does NOT send when formatted recap is empty', async () => {
+    await request(app)
+      .post('/webhook/memory?uid=test-user')
+      .send(makeMemory({
+        structured: {
+          title: '',
+          overview: 'x',
+          emoji: '',
+          category: '',
+          action_items: [],
+          events: [],
+        },
+      }));
+
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mockSendSelfMessage).not.toHaveBeenCalled();
+  });
+
+  it('still returns 200 when sending recap fails asynchronously', async () => {
+    mockSendSelfMessage.mockRejectedValueOnce(new Error('send failed'));
+
+    const res = await request(app)
+      .post('/webhook/memory?uid=test-user')
+      .send(makeMemory());
+
+    expect(res.status).toBe(200);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mockSendSelfMessage).toHaveBeenCalled();
+  });
 });

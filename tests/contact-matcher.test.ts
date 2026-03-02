@@ -87,4 +87,32 @@ describe('findContact', () => {
   it('returns null for empty contacts map', () => {
     expect(findContact(new Map(), 'John')).toBeNull();
   });
+
+  it('prioritizes a strong match from saved contacts', () => {
+    const saved = new Map([
+      ['14155551234@s.whatsapp.net', {
+        id: '14155551234@s.whatsapp.net',
+        name: 'Alex',
+        addedAt: '2026-01-01T00:00:00.000Z',
+      }],
+    ]);
+
+    const result = findContact(contacts, 'Alex', saved as any);
+    expect(result).not.toBeNull();
+    expect(result!.jid).toBe('14155551234@s.whatsapp.net');
+  });
+
+  it('falls back to WhatsApp contacts when saved match is weak', () => {
+    const saved = new Map([
+      ['14155550000@s.whatsapp.net', {
+        id: '14155550000@s.whatsapp.net',
+        name: 'Zed Person',
+        addedAt: '2026-01-01T00:00:00.000Z',
+      }],
+    ]);
+
+    const result = findContact(contacts, 'John Smith', saved as any);
+    expect(result).not.toBeNull();
+    expect(result!.jid).toBe('919876543210@s.whatsapp.net');
+  });
 });

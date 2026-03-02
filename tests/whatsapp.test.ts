@@ -17,6 +17,7 @@ function createMockSocket() {
     },
     user: { id: '919999999999:0@s.whatsapp.net' },
     sendMessage: vi.fn().mockResolvedValue({}),
+    onWhatsApp: vi.fn().mockResolvedValue([{ exists: true, jid: '14155551234@s.whatsapp.net' }]),
     /** Test helper — fire an event as if Baileys emitted it. */
     _emit(event: string, ...args: any[]) {
       for (const h of handlers.get(event) ?? []) h(...args);
@@ -77,6 +78,9 @@ const {
   sendMessage,
   getContacts,
   getSession,
+  hasContacts,
+  waitForContacts,
+  checkWhatsAppNumber,
 } = await import('../src/services/whatsapp.js');
 
 describe('WhatsApp service', () => {
@@ -145,6 +149,49 @@ describe('WhatsApp service', () => {
     const contacts = getContacts('user-d');
     expect(contacts.size).toBe(1);
     expect(contacts.get('1@s.whatsapp.net')?.name).toBe('Test Contact');
+  });
+
+  it('hasContacts returns true only after contact sync', async () => {
+    await initSession('user-h');
+    expect(hasContacts('user-h')).toBe(false);
+
+    mockSocket._emit('contacts.upsert', [{ id: '2@s.whatsapp.net', name: 'Two' }]);
+    expect(hasContacts('user-h')).toBe(true);
+  });
+
+  it('waitForContacts resolves true once contacts are available', async () => {
+    await initSession('user-i');
+    const waitPromise = waitForContacts('user-i', 3, 5);
+
+    setTimeout(() => {
+      mockSocket._emit('contacts.upsert', [{ id: '3@s.whatsapp.net', name: 'Three' }]);
+    }, 2);
+
+    await expect(waitPromise).resolves.toBe(true);
+  });
+
+  it('waitForContacts resolves false when contacts never sync', async () => {
+    await initSession('user-j');
+    await expect(waitForContacts('user-j', 1, 1)).resolves.toBe(false);
+  });
+
+  it('checkWhatsAppNumber returns canonical jid when number exists', async () => {
+    await initSession('user-k');
+    mockSocket._emit('connection.update', { connection: 'open' });
+
+    const result = await checkWhatsAppNumber('user-k', '+1 (415) 555-1234');
+
+    expect(mockSocket.onWhatsApp).toHaveBeenCalledWith('14155551234');
+    expect(result).toEqual({ exists: true, jid: '14155551234@s.whatsapp.net' });
+  });
+
+  it('checkWhatsAppNumber returns exists=false when lookup misses', async () => {
+    await initSession('user-l');
+    mockSocket._emit('connection.update', { connection: 'open' });
+    mockSocket.onWhatsApp.mockResolvedValueOnce([]);
+
+    const result = await checkWhatsAppNumber('user-l', '+1 415 555 0000');
+    expect(result).toEqual({ exists: false });
   });
 
   it('disconnect with loggedOut cleans up session', async () => {
