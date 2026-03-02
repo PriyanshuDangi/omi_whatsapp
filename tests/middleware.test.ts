@@ -40,11 +40,38 @@ function createApp({ appSecret }: { appSecret?: string } = {}) {
     }
     next();
   });
+  app.use('/setup/tools', (req, res, next) => {
+    const uid = (req.query.uid as string) || req.body?.uid;
+    if (uid && !fs.existsSync(path.join('sessions', uid))) {
+      res.status(403).json({ error: 'Unknown session. Please set up WhatsApp first.' });
+      return;
+    }
+    next();
+  });
+  app.use('/contacts', (req, res, next) => {
+    const uid = (req.query.uid as string) || req.body?.uid;
+    if (uid && !fs.existsSync(path.join('sessions', uid))) {
+      res.status(403).json({ error: 'Unknown session. Please set up WhatsApp first.' });
+      return;
+    }
+    next();
+  });
+  app.use('/setup/contacts', (req, res, next) => {
+    const uid = (req.query.uid as string) || req.body?.uid;
+    if (uid && !fs.existsSync(path.join('sessions', uid))) {
+      res.status(403).json({ error: 'Unknown session. Please set up WhatsApp first.' });
+      return;
+    }
+    next();
+  });
 
   // Dummy endpoints that pass through middleware
   app.get('/test', (_req, res) => res.json({ ok: true }));
   app.post('/webhook/test', (_req, res) => res.json({ ok: true }));
   app.post('/tools/test', (_req, res) => res.json({ ok: true }));
+  app.post('/setup/tools/test', (_req, res) => res.json({ ok: true }));
+  app.get('/contacts/test', (_req, res) => res.json({ ok: true }));
+  app.get('/setup/contacts/test', (_req, res) => res.json({ ok: true }));
 
   return app;
 }
@@ -134,5 +161,21 @@ describe('Session validation middleware on /tools', () => {
 
     expect(res.status).toBe(200);
     existsSpy.mockRestore();
+  });
+
+  it('applies same validation on /setup/tools', async () => {
+    const app = createApp();
+    const res = await request(app)
+      .post('/setup/tools/test')
+      .send({ uid: 'no-session-here' });
+    expect(res.status).toBe(403);
+  });
+
+  it('applies same validation on /contacts and /setup/contacts', async () => {
+    const app = createApp();
+    const res1 = await request(app).get('/contacts/test?uid=no-session-here');
+    const res2 = await request(app).get('/setup/contacts/test?uid=no-session-here');
+    expect(res1.status).toBe(403);
+    expect(res2.status).toBe(403);
   });
 });
