@@ -232,23 +232,61 @@ await run('16. Contacts — delete non-existent contact', async () => {
   });
 });
 
+await run('17. Contacts — bulk import (valid)', async () => {
+  const { json } = await request('POST', `/contacts/import?uid=${UID}`, {
+    body: {
+      contacts: [
+        { name: 'Import Alice', phone: '+14155551111' },
+        { name: 'Import Bob', phone: '+919876543210' },
+        { name: '', phone: '+12345' },
+      ],
+    },
+  });
+  assert(json.stats, `Expected stats in response, got ${JSON.stringify(json)}`);
+  assert(json.stats.invalid >= 1, `Expected at least 1 invalid, got ${json.stats.invalid}`);
+  console.log(`     → upserted: ${json.stats.upserted}, skipped: ${json.stats.skipped}, invalid: ${json.stats.invalid}`);
+});
+
+await run('18. Contacts — bulk import (empty array)', async () => {
+  const { json } = await request('POST', `/contacts/import?uid=${UID}`, {
+    body: { contacts: [] },
+  });
+  assert(json.stats.upserted === 0, 'Expected 0 upserted for empty import');
+});
+
+await run('19. Contacts — bulk import (missing array)', async () => {
+  await request('POST', `/contacts/import?uid=${UID}`, {
+    body: {},
+    expectedStatus: 400,
+  });
+});
+
+await run('20. Contacts — list includes source field', async () => {
+  const { json } = await request('GET', `/contacts?uid=${UID}`);
+  if (json.contacts.length > 0) {
+    const sources = json.contacts.map(c => c.source);
+    assert(sources.every(s => s === 'manual' || s === 'import'), `Unexpected source values: ${sources}`);
+    console.log(`     → ${json.contacts.length} contacts, sources: ${[...new Set(sources)].join(', ')}`);
+  }
+});
+
 // ─── QR code ─────────────────────────────────────────────────────────────────
 
 const QR_UID = 'test-qr-uid';
 
-await run('17. QR code — setup page triggers session init', async () => {
+await run('21. QR code — setup page triggers session init', async () => {
   // Hitting /setup kicks off Baileys session init in the background
   const { text } = await request('GET', `/setup?uid=${QR_UID}`);
   assert(text.includes('<'), 'Expected HTML response from setup page');
 });
 
-await run('18. QR code — setup status is false (not yet linked)', async () => {
+await run('22. QR code — setup status is false (not yet linked)', async () => {
   const { json } = await request('GET', `/setup/status?uid=${QR_UID}`);
   assert(typeof json.is_setup_completed === 'boolean', 'Missing is_setup_completed field');
   assert(json.is_setup_completed === false, `Expected false for fresh UID, got ${json.is_setup_completed}`);
 });
 
-await run('19. QR code — SSE stream emits a QR data URL', async () => {
+await run('23. QR code — SSE stream emits a QR data URL', async () => {
   const TIMEOUT_MS = 20_000;
 
   const qrDataUrl = await new Promise(async (resolve, reject) => {
@@ -317,15 +355,15 @@ await run('19. QR code — SSE stream emits a QR data URL', async () => {
 
 // ─── Error cases ─────────────────────────────────────────────────────────────
 
-await run('20. Error — missing UID on webhook', async () => {
+await run('24. Error — missing UID on webhook', async () => {
   await request('POST', '/webhook/memory', { body: {}, expectedStatus: 400 });
 });
 
-await run('21. Error — invalid UID (path traversal)', async () => {
+await run('25. Error — invalid UID (path traversal)', async () => {
   await request('GET', '/setup/status?uid=../../../etc/passwd', { expectedStatus: 400 });
 });
 
-await run('22. Error — unknown session on /tools', async () => {
+await run('26. Error — unknown session on /tools', async () => {
   await request('POST', '/tools/send_message?uid=nonexistent-uid-12345', {
     body: { uid: 'nonexistent-uid-12345', contact_name: 'Someone', message: 'fail' },
     expectedStatus: 403,

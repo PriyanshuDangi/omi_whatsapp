@@ -458,7 +458,7 @@ toolsRouter.post('/save_contact', async (req, res) => {
       return;
     }
 
-    const contact = saveContact(uid, contactName, check.jid);
+    const contact = saveContact(uid, contactName, check.jid, 'manual');
     logger.info({ uid, contactName, jid: check.jid }, 'Chat tool: contact saved');
     res.json({ result: `Contact "${contactName}" (${normalized}) saved successfully. You can now send messages to ${contactName} by name.` });
   } catch (err) {

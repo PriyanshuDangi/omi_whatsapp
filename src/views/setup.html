@@ -310,7 +310,10 @@
             <input type="text" id="contact-name" placeholder="Name (e.g. Mom)" autocomplete="off" />
             <input type="tel" id="contact-phone" placeholder="+1 415 555 1234" autocomplete="off" />
           </div>
-          <button class="btn btn-primary" id="add-contact-btn">Add Contact</button>
+          <div class="btn-row" style="margin-top: 0;">
+            <button class="btn btn-primary" id="add-contact-btn" style="flex: 1;">Add Contact</button>
+            <button class="btn btn-secondary" id="import-contacts-btn" style="flex: 1; display: none;">Import from Phone</button>
+          </div>
           <div id="contact-feedback"></div>
         </div>
         <ul class="contact-list" id="contact-list"></ul>
@@ -354,8 +357,15 @@
       var contactNameInput = document.getElementById('contact-name');
       var contactPhoneInput = document.getElementById('contact-phone');
       var addContactBtn = document.getElementById('add-contact-btn');
+      var importContactsBtn = document.getElementById('import-contacts-btn');
       var contactFeedback = document.getElementById('contact-feedback');
       var contactList = document.getElementById('contact-list');
+
+      // Show import button only if Contact Picker API is available
+      var hasContactPicker = window.isSecureContext && 'contacts' in navigator && 'ContactsManager' in window;
+      if (hasContactPicker) {
+        importContactsBtn.style.display = '';
+      }
 
       var TERMINAL_REASONS = ['logged_out', 'server_rejected'];
 
@@ -503,6 +513,51 @@
             addContactBtn.disabled = false;
             addContactBtn.textContent = 'Add Contact';
           });
+      });
+
+      // ── Import from phone ─────────────────────────────────────────
+      importContactsBtn.addEventListener('click', async function () {
+        clearFeedback();
+        try {
+          var selected = await navigator.contacts.select(['name', 'tel'], { multiple: true });
+          if (!selected || selected.length === 0) return;
+
+          var mapped = [];
+          for (var i = 0; i < selected.length; i++) {
+            var c = selected[i];
+            var cName = (c.name && c.name[0]) || '';
+            var cTel = (c.tel && c.tel[0]) || '';
+            if (cName && cTel) mapped.push({ name: cName, phone: cTel });
+          }
+
+          if (mapped.length === 0) {
+            setFeedback('No valid contacts found in selection.', true);
+            return;
+          }
+
+          importContactsBtn.disabled = true;
+          importContactsBtn.textContent = 'Importing...';
+
+          var r = await fetch('/setup/contacts/import' + uidParam, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contacts: mapped }),
+          });
+          var json = await r.json();
+          if (!r.ok) {
+            setFeedback(json.error || 'Import failed.', true);
+          } else {
+            setFeedback(json.result || 'Import complete!', false);
+            loadContacts();
+          }
+        } catch (err) {
+          if (err.name !== 'TypeError') {
+            setFeedback('Import cancelled or not supported.', true);
+          }
+        } finally {
+          importContactsBtn.disabled = false;
+          importContactsBtn.textContent = 'Import from Phone';
+        }
       });
 
       function deleteContact(jid, li) {
