@@ -160,10 +160,50 @@ function emit(uid: string, event: SessionEvent): void {
   }
 }
 
+/**
+ * Archive non-sensitive session artifacts before deleting auth state.
+ * We keep contacts for debugging/audit and store only creds.me in metadata.
+ */
+function archiveSessionData(uid: string, reason: string): void {
+  const sessionDir = path.join('sessions', uid);
+  if (!fs.existsSync(sessionDir)) return;
+
+  const contactsPath = path.join(sessionDir, 'contacts.json');
+  if (!fs.existsSync(contactsPath)) return;
+
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const archiveDir = path.join('sessions-archive', uid, timestamp);
+    const credsPath = path.join(sessionDir, 'creds.json');
+    let me: unknown = null;
+
+    if (fs.existsSync(credsPath)) {
+      try {
+        const credsRaw = JSON.parse(fs.readFileSync(credsPath, 'utf-8'));
+        me = credsRaw?.me ?? null;
+      } catch (err) {
+        logger.warn({ uid, reason, err }, 'Failed to parse creds.json for archive metadata');
+      }
+    }
+
+    fs.mkdirSync(archiveDir, { recursive: true });
+    fs.copyFileSync(contactsPath, path.join(archiveDir, 'contacts.json'));
+    fs.writeFileSync(
+      path.join(archiveDir, 'meta.json'),
+      JSON.stringify({ uid, reason, archivedAt: new Date().toISOString(), me }, null, 2),
+      'utf-8',
+    );
+    logger.info({ uid, reason, archiveDir }, 'Archived contacts before session cleanup');
+  } catch (err) {
+    logger.error({ uid, reason, err }, 'Failed to archive contacts before session cleanup');
+  }
+}
+
 /** Remove persisted auth directory for a uid so next init starts with fresh credentials. */
-function clearSessionAuth(uid: string): void {
+function clearSessionAuth(uid: string, reason: string): void {
   const sessionDir = path.join('sessions', uid);
   if (fs.existsSync(sessionDir)) {
+    archiveSessionData(uid, reason);
     fs.rmSync(sessionDir, { recursive: true, force: true });
   }
 }
@@ -311,7 +351,7 @@ export async function initSession(uid: string): Promise<void> {
         retryState.delete(uid);
         // Logged-out credentials are invalid. Clear local auth so user can relink via QR.
         if (reason === 'logged_out') {
-          clearSessionAuth(uid);
+          clearSessionAuth(uid, 'logged_out');
         }
         return;
       }
@@ -523,7 +563,7 @@ export async function logoutSession(uid: string): Promise<void> {
   emit(uid, { type: 'disconnected', reason: 'logged_out' });
 
   // Remove persisted auth so next setup starts a fresh QR link
-  clearSessionAuth(uid);
+  clearSessionAuth(uid, 'logout');
 
   logger.info({ uid }, 'WhatsApp session logged out and cleaned up');
 }
