@@ -236,7 +236,33 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 18. Setup — Logout WhatsApp Session
+### 18. Contacts — Bulk Import
+### ============================================================
+
+POST {{host}}/contacts/import?uid={{uid}}
+Content-Type: application/json
+
+{
+  "contacts": [
+    { "name": "Alice Smith", "phone": "+14155551111" },
+    { "name": "Bob Jones", "phone": "+919876543210" },
+    { "name": "Charlie", "phone": "+442071234567" }
+  ]
+}
+
+### ============================================================
+### 19. Contacts — Bulk Import (empty)
+### ============================================================
+
+POST {{host}}/contacts/import?uid={{uid}}
+Content-Type: application/json
+
+{
+  "contacts": []
+}
+
+### ============================================================
+### 20. Setup — Logout WhatsApp Session
 ### ============================================================
 
 POST {{host}}/setup/logout?uid={{uid}}
@@ -247,7 +273,7 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 19. Error Cases — Missing UID
+### 21. Error Cases — Missing UID
 ### ============================================================
 
 POST {{host}}/webhook/memory
@@ -256,13 +282,13 @@ Content-Type: application/json
 {}
 
 ### ============================================================
-### 20. Error Cases — Invalid UID format
+### 22. Error Cases — Invalid UID format
 ### ============================================================
 
 GET {{host}}/setup/status?uid=../../../etc/passwd
 
 ### ============================================================
-### 21. Error Cases — Unknown session on /tools
+### 23. Error Cases — Unknown session on /tools
 ### ============================================================
 
 POST {{host}}/tools/send_message?uid=nonexistent-uid

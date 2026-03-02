@@ -104,6 +104,7 @@ function scoreVariant(query: string, queryTokens: Set<string>, variant: string):
 /**
  * Score a contact map and return the best match found.
  * Shared by both saved-contact and Baileys-contact passes.
+ * When two contacts tie on score, manual source wins over import.
  */
 function findBestInMap(
   contactMap: Map<string, Contact>,
@@ -111,27 +112,34 @@ function findBestInMap(
   queryTokens: Set<string>,
   currentBestScore: number,
   currentBestMatch: MatchedContact | null,
-): { score: number; match: MatchedContact | null } {
+  currentBestSource?: string,
+): { score: number; match: MatchedContact | null; source?: string } {
   let bestScore = currentBestScore;
   let bestMatch = currentBestMatch;
+  let bestSource = currentBestSource;
 
   for (const [jid, contact] of contactMap) {
     if (!jid.endsWith('@s.whatsapp.net')) continue;
 
     const variants = getNameVariants(contact);
     const displayName = getDisplayName(contact);
+    const contactSource = (contact as SavedContact).source;
 
     for (const variant of variants) {
       const score = scoreVariant(query, queryTokens, variant);
-      if (score > bestScore) {
+      const isBetter = score > bestScore
+        || (score === bestScore && contactSource === 'manual' && bestSource === 'import');
+
+      if (isBetter) {
         bestScore = score;
         bestMatch = { jid, displayName };
+        bestSource = contactSource;
       }
-      if (bestScore >= SCORE_EXACT) return { score: bestScore, match: bestMatch };
+      if (bestScore >= SCORE_EXACT) return { score: bestScore, match: bestMatch, source: bestSource };
     }
   }
 
-  return { score: bestScore, match: bestMatch };
+  return { score: bestScore, match: bestMatch, source: bestSource };
 }
 
 /**
@@ -151,17 +159,17 @@ export function findContact(
 
   // First pass: saved contacts get priority
   if (savedContacts && savedContacts.size > 0) {
-    const saved = findBestInMap(savedContacts, query, queryTokens, 0, null);
+    const saved = findBestInMap(savedContacts, query, queryTokens, 0, null, undefined);
     if (saved.match && saved.score >= SCORE_FIRST_NAME) {
       return saved.match;
     }
 
     // If saved contacts had a weaker match, carry it as the baseline
-    const { score, match } = findBestInMap(contacts, query, queryTokens, saved.score, saved.match);
+    const { match } = findBestInMap(contacts, query, queryTokens, saved.score, saved.match, saved.source);
     return match;
   }
 
   // No saved contacts — scan Baileys contacts only
-  const { match } = findBestInMap(contacts, query, queryTokens, 0, null);
+  const { match } = findBestInMap(contacts, query, queryTokens, 0, null, undefined);
   return match;
 }

@@ -1,17 +1,19 @@
 /**
- * Contacts routes — user-managed saved contacts CRUD.
+ * Contacts routes — user-managed saved contacts CRUD + bulk import.
  *
- * POST /contacts/save?uid=...   → Save a contact (name + phone with country code)
- * GET  /contacts?uid=...        → List all saved contacts
- * DELETE /contacts?uid=...      → Delete a saved contact by JID or phone
+ * POST   /contacts/save?uid=...   → Save a contact (name + phone with country code)
+ * POST   /contacts/import?uid=... → Bulk import contacts from phone picker
+ * GET    /contacts?uid=...        → List all saved contacts
+ * DELETE /contacts?uid=...        → Delete a saved contact by JID or phone
  */
 
 import { Router } from 'express';
 import { logger } from '../utils/logger.js';
 import { isConnected, checkWhatsAppNumber } from '../services/whatsapp.js';
-import { getSavedContacts, saveContact, deleteContact } from '../services/saved-contacts.js';
+import { getSavedContacts, saveContact, deleteContact, importContacts } from '../services/saved-contacts.js';
 
 const E164_REGEX = /^\+[1-9]\d{6,14}$/;
+const MAX_IMPORT_CONTACTS = 1000;
 
 export const contactsRouter = Router();
 
@@ -62,11 +64,58 @@ contactsRouter.post('/save', async (req, res) => {
       return;
     }
 
-    const contact = saveContact(uid, name, check.jid);
+    const contact = saveContact(uid, name, check.jid, 'manual');
     res.json({ result: `Contact "${name}" saved successfully.`, contact });
   } catch (err) {
     logger.error({ uid, name, phone: normalized, err }, 'Failed to save contact');
     res.status(500).json({ error: 'Failed to save contact. Please try again.' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /contacts/import
+// ---------------------------------------------------------------------------
+contactsRouter.post('/import', (req, res) => {
+  const uid = (req.query.uid as string) || req.body?.uid;
+  const contacts: unknown = req.body?.contacts;
+
+  if (!uid) {
+    res.status(400).json({ error: 'Missing uid parameter' });
+    return;
+  }
+  if (!Array.isArray(contacts)) {
+    res.status(400).json({ error: 'Missing or invalid contacts array.' });
+    return;
+  }
+  if (contacts.length === 0) {
+    res.json({ result: 'No contacts to import.', stats: { upserted: 0, skipped: 0, invalid: 0, manualPreserved: 0 } });
+    return;
+  }
+  if (contacts.length > MAX_IMPORT_CONTACTS) {
+    res.status(400).json({ error: `Too many contacts. Maximum ${MAX_IMPORT_CONTACTS} per import.` });
+    return;
+  }
+
+  const start = Date.now();
+
+  try {
+    const stats = importContacts(uid, contacts as Array<{ name: string; phone: string }>);
+    const durationMs = Date.now() - start;
+
+    logger.info({
+      uid,
+      totalReceived: contacts.length,
+      ...stats,
+      durationMs,
+    }, 'Contact import completed');
+
+    res.json({
+      result: `Imported ${stats.upserted} contact(s).`,
+      stats,
+    });
+  } catch (err) {
+    logger.error({ uid, err }, 'Failed to import contacts');
+    res.status(500).json({ error: 'Failed to import contacts. Please try again.' });
   }
 });
 
@@ -86,6 +135,7 @@ contactsRouter.get('/', (req, res) => {
     jid: c.id,
     name: c.name,
     phone: '+' + c.id.replace('@s.whatsapp.net', ''),
+    source: c.source ?? 'manual',
     addedAt: c.addedAt,
     updatedAt: c.updatedAt,
   }));

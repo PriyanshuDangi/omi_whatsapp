@@ -400,6 +400,7 @@ describe('Chat tools routes', () => {
         'test-user',
         'Rajesh',
         '919876543210@s.whatsapp.net',
+        'manual',
       );
     });
 

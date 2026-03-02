@@ -24,6 +24,10 @@ const app = express();
 // Behind nginx reverse proxy — trust first proxy for correct client IP in rate limiting / logs
 app.set('trust proxy', 1);
 
+// Higher body limit for bulk contact import (up to ~1000 contacts)
+app.use('/contacts/import', express.json({ limit: '1mb' }));
+app.use('/setup/contacts/import', express.json({ limit: '1mb' }));
+
 // Parse JSON bodies (Omi webhook payloads)
 app.use(express.json());
 
