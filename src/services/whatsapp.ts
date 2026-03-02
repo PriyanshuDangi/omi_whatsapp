@@ -177,6 +177,14 @@ export async function initSession(uid: string): Promise<void> {
     browser: ['Omi WhatsApp', 'Chrome', '1.0.0'],
 
     syncFullHistory: false,
+    shouldSyncHistoryMessage: (msg) => {
+      const type = msg.syncType;
+      const { HistorySyncType } = proto.HistorySync;
+      return type === HistorySyncType.PUSH_NAME
+        || type === HistorySyncType.INITIAL_BOOTSTRAP
+        || type === HistorySyncType.RECENT
+        || type === HistorySyncType.NON_BLOCKING_DATA;
+    },
     markOnlineOnConnect: false,
     fireInitQueries: false,
     generateHighQualityLinkPreview: false,
