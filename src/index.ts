@@ -12,6 +12,7 @@ import { logger, requestContextStorage } from './utils/logger.js';
 import { setupRouter } from './routes/setup.js';
 import { webhookRouter } from './routes/webhook.js';
 import { manifestRouter, toolsRouter } from './routes/chat-tools.js';
+import { contactsRouter } from './routes/contacts.js';
 import { initSession } from './services/whatsapp.js';
 import { startReminderTick } from './services/reminder.js';
 import { sanitizeUid } from './utils/sanitize.js';
@@ -120,6 +121,22 @@ app.use('/setup/tools', (req, res, next) => {
   }
   next();
 });
+app.use('/contacts', (req, res, next) => {
+  const uid = (req.query.uid as string) || req.body?.uid;
+  if (uid && !fs.existsSync(path.join('sessions', uid))) {
+    res.status(403).json({ error: 'Unknown session. Please set up WhatsApp first.' });
+    return;
+  }
+  next();
+});
+app.use('/setup/contacts', (req, res, next) => {
+  const uid = (req.query.uid as string) || req.body?.uid;
+  if (uid && !fs.existsSync(path.join('sessions', uid))) {
+    res.status(403).json({ error: 'Unknown session. Please set up WhatsApp first.' });
+    return;
+  }
+  next();
+});
 
 // ---------------------------------------------------------------------------
 // Health check
@@ -136,6 +153,8 @@ app.use('/webhook', webhookRouter);
 app.use('/.well-known', manifestRouter);
 app.use('/tools', toolsRouter);
 app.use('/setup/tools', toolsRouter); // Omi resolves relative to App Home URL (/setup)
+app.use('/contacts', contactsRouter);
+app.use('/setup/contacts', contactsRouter);
 
 // ---------------------------------------------------------------------------
 // Auto-restore existing WhatsApp sessions from filesystem on startup

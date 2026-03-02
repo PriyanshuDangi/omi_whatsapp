@@ -18,6 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import { logger, baileysLogger } from '../utils/logger.js';
 import type { WhatsAppSession, SessionEventCallback, SessionEvent } from '../types/whatsapp.js';
+import { loadSavedContacts } from './saved-contacts.js';
 
 // Active sessions keyed by uid
 const sessions = new Map<string, WhatsAppSession>();
@@ -188,12 +189,18 @@ function archiveSessionData(uid: string, reason: string): void {
 
     fs.mkdirSync(archiveDir, { recursive: true });
     fs.copyFileSync(contactsPath, path.join(archiveDir, 'contacts.json'));
+
+    const savedContactsPath = path.join(sessionDir, 'saved-contacts.json');
+    if (fs.existsSync(savedContactsPath)) {
+      fs.copyFileSync(savedContactsPath, path.join(archiveDir, 'saved-contacts.json'));
+    }
+
     fs.writeFileSync(
       path.join(archiveDir, 'meta.json'),
       JSON.stringify({ uid, reason, archivedAt: new Date().toISOString(), me }, null, 2),
       'utf-8',
     );
-    logger.info({ uid, reason, archiveDir }, 'Archived contacts before session cleanup');
+    logger.info({ uid, reason, archiveDir }, 'Archived session data before cleanup');
   } catch (err) {
     logger.error({ uid, reason, err }, 'Failed to archive contacts before session cleanup');
   }
@@ -202,9 +209,23 @@ function archiveSessionData(uid: string, reason: string): void {
 /** Remove persisted auth directory for a uid so next init starts with fresh credentials. */
 function clearSessionAuth(uid: string, reason: string): void {
   const sessionDir = path.join('sessions', uid);
-  if (fs.existsSync(sessionDir)) {
-    archiveSessionData(uid, reason);
-    fs.rmSync(sessionDir, { recursive: true, force: true });
+  if (!fs.existsSync(sessionDir)) return;
+
+  archiveSessionData(uid, reason);
+
+  // Preserve saved-contacts.json across session resets — it's user-managed data
+  const savedContactsPath = path.join(sessionDir, 'saved-contacts.json');
+  let savedContactsBackup: string | null = null;
+  if (fs.existsSync(savedContactsPath)) {
+    savedContactsBackup = fs.readFileSync(savedContactsPath, 'utf-8');
+  }
+
+  fs.rmSync(sessionDir, { recursive: true, force: true });
+
+  if (savedContactsBackup) {
+    fs.mkdirSync(sessionDir, { recursive: true });
+    fs.writeFileSync(savedContactsPath, savedContactsBackup, 'utf-8');
+    logger.debug({ uid }, 'Restored saved-contacts.json after session cleanup');
   }
 }
 
@@ -318,6 +339,7 @@ export async function initSession(uid: string): Promise<void> {
     contactStore.set(uid, new Map());
   }
   loadCachedContacts(uid);
+  loadSavedContacts(uid);
 
   // Handle connection updates (QR codes, connection state)
   socket.ev.on('connection.update', (update) => {
@@ -626,4 +648,23 @@ export async function waitForContacts(uid: string, retries = 10, delayMs = 2000)
     await new Promise((r) => setTimeout(r, delayMs));
   }
   return hasContacts(uid);
+}
+
+/**
+ * Check whether a phone number is registered on WhatsApp.
+ * Returns the canonical JID assigned by WhatsApp if the number exists.
+ */
+export async function checkWhatsAppNumber(uid: string, phone: string): Promise<{ exists: boolean; jid?: string }> {
+  const session = sessions.get(uid);
+  if (!session?.connected) {
+    throw new Error(`WhatsApp not connected for uid: ${uid}`);
+  }
+
+  const stripped = phone.replace(/[^0-9]/g, '');
+  const results = await session.socket.onWhatsApp(stripped);
+
+  if (results && results.length > 0 && results[0].exists) {
+    return { exists: true, jid: results[0].jid };
+  }
+  return { exists: false };
 }

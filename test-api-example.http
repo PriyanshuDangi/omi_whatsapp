@@ -194,7 +194,49 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 14. Setup — Logout WhatsApp Session
+### 14. Contacts — Save a Contact
+### ============================================================
+
+POST {{host}}/contacts/save?uid={{uid}}
+Content-Type: application/json
+
+{
+  "name": "Test Contact",
+  "phone": "+14155551234"
+}
+
+### ============================================================
+### 15. Contacts — List Saved Contacts
+### ============================================================
+
+GET {{host}}/contacts?uid={{uid}}
+
+### ============================================================
+### 16. Contacts — Delete a Saved Contact
+### ============================================================
+
+DELETE {{host}}/contacts?uid={{uid}}
+Content-Type: application/json
+
+{
+  "phone": "+14155551234"
+}
+
+### ============================================================
+### 17. Chat Tool — Save Contact via Omi Tool
+### ============================================================
+
+POST {{host}}/tools/save_contact?uid={{uid}}
+Content-Type: application/json
+
+{
+  "uid": "{{uid}}",
+  "contact_name": "Test Contact",
+  "phone_number": "+14155551234"
+}
+
+### ============================================================
+### 18. Setup — Logout WhatsApp Session
 ### ============================================================
 
 POST {{host}}/setup/logout?uid={{uid}}
@@ -205,7 +247,7 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 15. Error Cases — Missing UID
+### 19. Error Cases — Missing UID
 ### ============================================================
 
 POST {{host}}/webhook/memory
@@ -214,13 +256,13 @@ Content-Type: application/json
 {}
 
 ### ============================================================
-### 15. Error Cases — Invalid UID format
+### 20. Error Cases — Invalid UID format
 ### ============================================================
 
 GET {{host}}/setup/status?uid=../../../etc/passwd
 
 ### ============================================================
-### 16. Error Cases — Unknown session on /tools
+### 21. Error Cases — Unknown session on /tools
 ### ============================================================
 
 POST {{host}}/tools/send_message?uid=nonexistent-uid

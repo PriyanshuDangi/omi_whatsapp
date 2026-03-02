@@ -12,6 +12,7 @@
 
 import type { Contact } from '@whiskeysockets/baileys';
 import { distance } from 'fastest-levenshtein';
+import type { SavedContact } from './saved-contacts.js';
 
 export interface MatchedContact {
   jid: string;
@@ -101,22 +102,20 @@ function scoreVariant(query: string, queryTokens: Set<string>, variant: string):
 }
 
 /**
- * Find a WhatsApp contact by name. Uses scored matching across all contacts
- * and returns the single best match. Skips group JIDs and status broadcasts.
+ * Score a contact map and return the best match found.
+ * Shared by both saved-contact and Baileys-contact passes.
  */
-export function findContact(
-  contacts: Map<string, Contact>,
-  name: string,
-): MatchedContact | null {
-  const query = normalize(name);
-  if (!query) return null;
+function findBestInMap(
+  contactMap: Map<string, Contact>,
+  query: string,
+  queryTokens: Set<string>,
+  currentBestScore: number,
+  currentBestMatch: MatchedContact | null,
+): { score: number; match: MatchedContact | null } {
+  let bestScore = currentBestScore;
+  let bestMatch = currentBestMatch;
 
-  const queryTokens = new Set(query.split(/\s+/));
-
-  let bestScore = 0;
-  let bestMatch: MatchedContact | null = null;
-
-  for (const [jid, contact] of contacts) {
+  for (const [jid, contact] of contactMap) {
     if (!jid.endsWith('@s.whatsapp.net')) continue;
 
     const variants = getNameVariants(contact);
@@ -128,10 +127,41 @@ export function findContact(
         bestScore = score;
         bestMatch = { jid, displayName };
       }
-      // Short-circuit: perfect exact match can't be beaten
-      if (bestScore >= SCORE_EXACT) return bestMatch;
+      if (bestScore >= SCORE_EXACT) return { score: bestScore, match: bestMatch };
     }
   }
 
-  return bestMatch;
+  return { score: bestScore, match: bestMatch };
+}
+
+/**
+ * Find a WhatsApp contact by name. Saved contacts (user-managed) are checked
+ * first and take priority — a strong match (>= first-name tier) short-circuits
+ * without scanning Baileys contacts.
+ */
+export function findContact(
+  contacts: Map<string, Contact>,
+  name: string,
+  savedContacts?: Map<string, SavedContact>,
+): MatchedContact | null {
+  const query = normalize(name);
+  if (!query) return null;
+
+  const queryTokens = new Set(query.split(/\s+/));
+
+  // First pass: saved contacts get priority
+  if (savedContacts && savedContacts.size > 0) {
+    const saved = findBestInMap(savedContacts, query, queryTokens, 0, null);
+    if (saved.match && saved.score >= SCORE_FIRST_NAME) {
+      return saved.match;
+    }
+
+    // If saved contacts had a weaker match, carry it as the baseline
+    const { score, match } = findBestInMap(contacts, query, queryTokens, saved.score, saved.match);
+    return match;
+  }
+
+  // No saved contacts — scan Baileys contacts only
+  const { match } = findBestInMap(contacts, query, queryTokens, 0, null);
+  return match;
 }
