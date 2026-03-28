@@ -171,7 +171,18 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 12. On-Demand History Sync (default count)
+### 12. Resync Contacts (fetch missing phonebook names)
+### ============================================================
+
+POST {{host}}/setup/resync-contacts?uid={{uid}}
+Content-Type: application/json
+
+{
+  "uid": "{{uid}}"
+}
+
+### ============================================================
+### 13. On-Demand History Sync (default count)
 ### ============================================================
 
 POST {{host}}/setup/sync-history?uid={{uid}}
@@ -182,7 +193,7 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 13. On-Demand History Sync (custom count)
+### 14. On-Demand History Sync (custom count)
 ### ============================================================
 
 POST {{host}}/setup/sync-history?uid={{uid}}
@@ -194,7 +205,7 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 14. Contacts — Save a Contact
+### 15. Contacts — Save a Contact
 ### ============================================================
 
 POST {{host}}/contacts/save?uid={{uid}}
@@ -206,13 +217,13 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 15. Contacts — List Saved Contacts
+### 16. Contacts — List Saved Contacts
 ### ============================================================
 
 GET {{host}}/contacts?uid={{uid}}
 
 ### ============================================================
-### 16. Contacts — Delete a Saved Contact
+### 17. Contacts — Delete a Saved Contact
 ### ============================================================
 
 DELETE {{host}}/contacts?uid={{uid}}
@@ -223,7 +234,7 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 17. Chat Tool — Save Contact via Omi Tool
+### 18. Chat Tool — Save Contact via Omi Tool
 ### ============================================================
 
 POST {{host}}/tools/save_contact?uid={{uid}}
@@ -236,7 +247,7 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 18. Contacts — Bulk Import
+### 19. Contacts — Bulk Import
 ### ============================================================
 
 POST {{host}}/contacts/import?uid={{uid}}
@@ -251,7 +262,7 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 19. Contacts — Bulk Import (empty)
+### 20. Contacts — Bulk Import (empty)
 ### ============================================================
 
 POST {{host}}/contacts/import?uid={{uid}}
@@ -262,7 +273,7 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 20. Setup — Logout WhatsApp Session
+### 21. Setup — Logout WhatsApp Session
 ### ============================================================
 
 POST {{host}}/setup/logout?uid={{uid}}
@@ -273,7 +284,7 @@ Content-Type: application/json
 }
 
 ### ============================================================
-### 21. Error Cases — Missing UID
+### 22. Error Cases — Missing UID
 ### ============================================================
 
 POST {{host}}/webhook/memory
@@ -282,13 +293,13 @@ Content-Type: application/json
 {}
 
 ### ============================================================
-### 22. Error Cases — Invalid UID format
+### 23. Error Cases — Invalid UID format
 ### ============================================================
 
 GET {{host}}/setup/status?uid=../../../etc/passwd
 
 ### ============================================================
-### 23. Error Cases — Unknown session on /tools
+### 24. Error Cases — Unknown session on /tools
 ### ============================================================
 
 POST {{host}}/tools/send_message?uid=nonexistent-uid

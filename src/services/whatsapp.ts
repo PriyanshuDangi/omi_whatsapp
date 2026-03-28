@@ -26,6 +26,15 @@ const sessions = new Map<string, WhatsAppSession>();
 // Retry state per uid — tracks consecutive failures for backoff
 const retryState = new Map<string, { attempts: number; timer?: ReturnType<typeof setTimeout> }>();
 
+/**
+ * Tracks whether a session has received phonebook contact names via
+ * contacts.upsert (fired by Baileys app state sync). When this stays false
+ * after the initial sync window, we manually trigger resyncAppState.
+ */
+const contactsUpsertReceived = new Map<string, boolean>();
+
+const APP_STATE_RESYNC_DELAY_MS = 15_000;
+
 const MAX_RECONNECT_ATTEMPTS = 5;
 const BASE_BACKOFF_MS = 2_000;
 const MAX_BACKOFF_MS = 60_000;
@@ -408,6 +417,8 @@ export async function initSession(uid: string): Promise<void> {
   socket.ev.on('creds.update', saveCreds);
 
   // Collect contacts, chats, and messages from history sync.
+  contactsUpsertReceived.set(uid, false);
+
   socket.ev.on('messaging-history.set', ({ contacts, chats, messages, syncType }) => {
     logger.info({ uid, contacts: contacts.length, chats: chats.length, messages: messages.length, syncType }, 'History sync received');
 
@@ -421,15 +432,26 @@ export async function initSession(uid: string): Promise<void> {
       enrichContactsFromMessages(uid, messages);
       persistContacts(uid);
     });
+
+    // After INITIAL_BOOTSTRAP or PUSH_NAME sync, schedule a fallback resync
+    // of app state in case Baileys' automatic app state sync didn't complete
+    // (which would leave us without phonebook contact names).
+    const { HistorySyncType } = proto.HistorySync;
+    if (syncType === HistorySyncType.INITIAL_BOOTSTRAP || syncType === HistorySyncType.PUSH_NAME) {
+      scheduleAppStateResyncIfNeeded(uid);
+    }
   });
 
-  // contacts.upsert — main source of phonebook names
+  // contacts.upsert — main source of phonebook names (fired by app state sync)
   socket.ev.on('contacts.upsert', (contacts) => {
+    contactsUpsertReceived.set(uid, true);
 
+    let withName = 0;
     for (const contact of contacts) {
+      if (contact.name) withName++;
       upsertContact(uid, contact);
     }
-    logger.info({ uid, upserted: contacts.length, total: contactStore.get(uid)!.size }, 'Contacts upserted');
+    logger.info({ uid, upserted: contacts.length, withName, total: contactStore.get(uid)!.size }, 'Contacts upserted');
     persistContacts(uid);
   });
 
@@ -528,6 +550,89 @@ function enrichContactsFromMessages(uid: string, messages: WAMessage[], includeB
 }
 
 // ---------------------------------------------------------------------------
+// App state resync — fallback for missing phonebook names
+// ---------------------------------------------------------------------------
+
+const pendingResyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+/**
+ * Schedule a delayed check: if contacts.upsert hasn't fired by then,
+ * manually call resyncAppState to pull phonebook contact names.
+ */
+function scheduleAppStateResyncIfNeeded(uid: string): void {
+  if (pendingResyncTimers.has(uid)) return;
+
+  const timer = setTimeout(async () => {
+    pendingResyncTimers.delete(uid);
+
+    if (contactsUpsertReceived.get(uid)) {
+      logger.debug({ uid }, 'App state sync completed normally — skipping fallback resync');
+      return;
+    }
+
+    const session = sessions.get(uid);
+    if (!session?.connected) return;
+
+    logger.info({ uid }, 'contacts.upsert not received after initial sync — triggering app state resync');
+
+    try {
+      await session.socket.resyncAppState(
+        ['critical_unblock_low', 'regular_high', 'regular_low', 'regular'] as const,
+        false,
+      );
+      logger.info({ uid, total: contactStore.get(uid)?.size }, 'App state resync completed');
+    } catch (err) {
+      logger.error({ uid, err }, 'App state resync failed');
+    }
+  }, APP_STATE_RESYNC_DELAY_MS);
+
+  pendingResyncTimers.set(uid, timer);
+}
+
+/**
+ * Manually trigger an app state resync to refresh phonebook contact names.
+ * Useful when the automatic sync didn't complete on initial connection.
+ *
+ * resyncAppState returns before the contacts.upsert event fires, so we
+ * wait briefly for the event-driven upsert to land before reporting counts.
+ */
+export async function resyncContacts(uid: string): Promise<{ before: number; after: number }> {
+  const session = sessions.get(uid);
+  if (!session?.connected) {
+    throw new Error(`WhatsApp not connected for uid: ${uid}`);
+  }
+
+  const namedBefore = countNamedContacts(uid);
+
+  await session.socket.resyncAppState(
+    ['critical_unblock_low', 'regular_high', 'regular_low', 'regular'] as const,
+    false,
+  );
+
+  // contacts.upsert fires asynchronously after resyncAppState resolves.
+  // Poll briefly to capture the updated count before responding.
+  let namedAfter = countNamedContacts(uid);
+  for (let i = 0; i < 10 && namedAfter <= namedBefore; i++) {
+    await new Promise((r) => setTimeout(r, 300));
+    namedAfter = countNamedContacts(uid);
+  }
+
+  logger.info({ uid, namedBefore, namedAfter, total: contactStore.get(uid)?.size }, 'Manual contact resync completed');
+  return { before: namedBefore, after: namedAfter };
+}
+
+/** Count contacts that have a real phonebook name (not just a pushName or bare JID). */
+function countNamedContacts(uid: string): number {
+  const store = contactStore.get(uid);
+  if (!store) return 0;
+  let count = 0;
+  for (const c of store.values()) {
+    if (c.name && !c.name.includes('\u2219')) count++;
+  }
+  return count;
+}
+
+// ---------------------------------------------------------------------------
 // On-demand history sync
 // ---------------------------------------------------------------------------
 
@@ -566,10 +671,14 @@ export async function requestHistorySync(uid: string, count = 50): Promise<void>
  * Idempotent — safe to call even if the session is already gone.
  */
 export async function logoutSession(uid: string): Promise<void> {
-  // Clear any pending reconnect timer
+  // Clear any pending timers
   const retry = retryState.get(uid);
   if (retry?.timer) clearTimeout(retry.timer);
   retryState.delete(uid);
+  const resyncTimer = pendingResyncTimers.get(uid);
+  if (resyncTimer) clearTimeout(resyncTimer);
+  pendingResyncTimers.delete(uid);
+  contactsUpsertReceived.delete(uid);
 
   const session = sessions.get(uid);
   if (session) {

@@ -267,6 +267,26 @@
       font-size: 0.85rem;
       padding: 1rem 0;
     }
+
+    .resync-section {
+      margin-top: 1.25rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid #1a1a2e;
+      text-align: center;
+    }
+
+    .resync-section p {
+      color: #666;
+      font-size: 0.8rem;
+      margin-bottom: 0.6rem;
+      line-height: 1.4;
+    }
+
+    #resync-feedback {
+      font-size: 0.85rem;
+      min-height: 1.2rem;
+      margin-top: 0.5rem;
+    }
   </style>
 </head>
 <body>
@@ -317,6 +337,12 @@
           <div id="contact-feedback"></div>
         </div>
         <ul class="contact-list" id="contact-list"></ul>
+
+        <div class="resync-section">
+          <p>Contacts missing names? Re-sync from your phone's address book.</p>
+          <button class="btn btn-secondary" id="resync-contacts-btn">Resync Contacts</button>
+          <div id="resync-feedback"></div>
+        </div>
       </div>
     </div>
 
@@ -558,6 +584,37 @@
           importContactsBtn.disabled = false;
           importContactsBtn.textContent = 'Import from Phone';
         }
+      });
+
+      // ── Resync contacts ─────────────────────────────────────────
+      var resyncBtn = document.getElementById('resync-contacts-btn');
+      var resyncFeedback = document.getElementById('resync-feedback');
+
+      resyncBtn.addEventListener('click', function () {
+        resyncBtn.disabled = true;
+        resyncBtn.textContent = 'Syncing...';
+        resyncFeedback.textContent = '';
+        resyncFeedback.className = '';
+
+        fetch('/setup/resync-contacts' + uidParam, { method: 'POST' })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+          .then(function (res) {
+            if (!res.ok) {
+              resyncFeedback.textContent = res.json.error || 'Resync failed.';
+              resyncFeedback.className = 'feedback-error';
+            } else {
+              resyncFeedback.textContent = res.json.result || 'Resync complete!';
+              resyncFeedback.className = 'feedback-success';
+            }
+          })
+          .catch(function () {
+            resyncFeedback.textContent = 'Network error. Please try again.';
+            resyncFeedback.className = 'feedback-error';
+          })
+          .finally(function () {
+            resyncBtn.disabled = false;
+            resyncBtn.textContent = 'Resync Contacts';
+          });
       });
 
       function deleteContact(jid, li) {

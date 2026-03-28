@@ -1,18 +1,19 @@
 /**
- * Setup routes — QR code page, SSE events, setup status, logout, and history sync.
+ * Setup routes — QR code page, SSE events, setup status, logout, and syncing.
  *
- * GET  /setup?uid=...            → Serve the HTML setup page
- * GET  /setup/status?uid=...     → Return { is_setup_completed: boolean } for Omi
- * GET  /setup/events?uid=...     → SSE stream pushing QR codes and connection status
- * POST /setup/logout?uid=...     → Log out WhatsApp session and clean up auth state
- * POST /setup/sync-history?uid=… → Trigger on-demand history sync for contact enrichment
+ * GET  /setup?uid=...               → Serve the HTML setup page
+ * GET  /setup/status?uid=...        → Return { is_setup_completed: boolean } for Omi
+ * GET  /setup/events?uid=...        → SSE stream pushing QR codes and connection status
+ * POST /setup/logout?uid=...        → Log out WhatsApp session and clean up auth state
+ * POST /setup/resync-contacts?uid=… → Re-fetch phonebook contact names via app state sync
+ * POST /setup/sync-history?uid=…    → Trigger on-demand history sync for contact enrichment
  */
 
 import { Router } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as QRCode from 'qrcode';
-import { initSession, isConnected, subscribe, requestHistorySync, logoutSession } from '../services/whatsapp.js';
+import { initSession, isConnected, subscribe, requestHistorySync, logoutSession, resyncContacts } from '../services/whatsapp.js';
 import { logger } from '../utils/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -111,6 +112,34 @@ setupRouter.post('/logout', async (req, res) => {
   } catch (err) {
     logger.error({ uid, err }, 'Failed to logout WhatsApp session');
     res.status(500).json({ error: 'Failed to logout. Please try again.' });
+  }
+});
+
+/**
+ * POST /setup/resync-contacts?uid=...
+ * Triggers an app state resync to fetch phonebook contact names.
+ * Use when contacts are missing names after initial setup.
+ */
+setupRouter.post('/resync-contacts', async (req, res) => {
+  const uid = (req.query.uid as string) || req.body?.uid;
+  if (!uid) {
+    res.status(400).json({ error: 'Missing uid parameter' });
+    return;
+  }
+
+  if (!isConnected(uid)) {
+    res.status(401).json({ error: 'WhatsApp not connected. Please link your WhatsApp account first.' });
+    return;
+  }
+
+  try {
+    const { before, after } = await resyncContacts(uid);
+    res.json({
+      result: `Contact resync completed. Named contacts: ${before} → ${after}.`,
+    });
+  } catch (err) {
+    logger.error({ uid, err }, 'Failed to resync contacts');
+    res.status(500).json({ error: 'Failed to resync contacts. Please try again.' });
   }
 });
 
