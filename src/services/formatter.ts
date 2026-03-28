@@ -5,8 +5,6 @@
 
 import type { OmiMemory } from '../types/omi.js';
 
-const MAX_OVERVIEW_LENGTH = 500;
-
 /** Compute a human-readable duration string from two ISO timestamps. */
 function formatDuration(startedAt: string, finishedAt: string): string {
   const start = new Date(startedAt).getTime();
@@ -42,12 +40,6 @@ function formatDate(isoDate: string): string {
   });
 }
 
-/** Truncate text to maxLength, appending "..." if truncated. */
-function truncate(text: string, maxLength: number): string {
-  if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength).trimEnd() + '...';
-}
-
 /**
  * Build a formatted WhatsApp recap message from an Omi memory.
  * Returns an empty string if the memory should be skipped (discarded or missing structured data).
@@ -68,7 +60,7 @@ export function formatMemoryRecap(memory: OmiMemory): string {
 
   // Overview
   if (structured.overview) {
-    lines.push(`📝 ${truncate(structured.overview, MAX_OVERVIEW_LENGTH)}`);
+    lines.push(`📝 ${structured.overview}`);
     lines.push('');
   }
 

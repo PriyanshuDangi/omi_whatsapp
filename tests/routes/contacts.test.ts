@@ -21,10 +21,13 @@ const mockSaveContact = vi.fn().mockImplementation((_uid: string, name: string, 
 }));
 const mockDeleteContact = vi.fn().mockReturnValue(true);
 
+const mockImportContacts = vi.fn().mockReturnValue({ upserted: 0, skipped: 0, invalid: 0, manualPreserved: 0 });
+
 vi.mock('../../src/services/saved-contacts.js', () => ({
   getSavedContacts: (...args: any[]) => mockGetSavedContacts(...args),
   saveContact: (...args: any[]) => mockSaveContact(...args),
   deleteContact: (...args: any[]) => mockDeleteContact(...args),
+  importContacts: (...args: any[]) => mockImportContacts(...args),
 }));
 
 const { contactsRouter } = await import('../../src/routes/contacts.js');
@@ -59,7 +62,7 @@ describe('Contacts routes', () => {
 
       expect(res.status).toBe(200);
       expect(mockCheckWhatsAppNumber).toHaveBeenCalledWith('test-user', '+14155551234');
-      expect(mockSaveContact).toHaveBeenCalledWith('test-user', 'Mom', '14155551234@s.whatsapp.net');
+      expect(mockSaveContact).toHaveBeenCalledWith('test-user', 'Mom', '14155551234@s.whatsapp.net', 'manual');
     });
 
     it('returns 400 when uid is missing', async () => {
