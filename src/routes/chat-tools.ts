@@ -192,7 +192,7 @@ toolsRouter.post('/send_message', async (req, res) => {
     return;
   }
 
-  logger.info({ uid, contactName, message }, 'Chat tool: send_message request received');
+  logger.info({ uid, contactName, messageLength: message.length }, 'Chat tool: send_message request received');
 
   if (!isConnected(uid)) {
     logger.warn({ uid }, 'Chat tool: send_message — WhatsApp not connected');
@@ -385,7 +385,7 @@ toolsRouter.post('/set_reminder', async (req, res) => {
     return;
   }
 
-  logger.info({ uid, message, delayMinutes, contactName: contactName ?? null }, 'Chat tool: set_reminder request received');
+  logger.info({ uid, messageLength: message.length, delayMinutes, contactName: contactName ?? null }, 'Chat tool: set_reminder request received');
 
   if (!isConnected(uid)) {
     logger.warn({ uid }, 'Chat tool: set_reminder — WhatsApp not connected');

@@ -6,6 +6,7 @@
 
 import { Router } from 'express';
 import { logger } from '../utils/logger.js';
+import { redactBody } from '../utils/redact.js';
 import type { OmiMemory } from '../types/omi.js';
 import { formatMemoryRecap } from '../services/formatter.js';
 import {
@@ -32,7 +33,7 @@ webhookRouter.post('/memory', (req, res) => {
   const memory = req.body as OmiMemory;
 
   logger.info({ uid }, 'Memory webhook received');
-  logger.info({ uid, body: req.body }, 'Memory webhook raw body');
+  logger.info({ uid, body: redactBody(req.body) }, 'Memory webhook raw body');
 
   // Skip discarded or empty memories
   if (memory.discarded) {
@@ -42,7 +43,7 @@ webhookRouter.post('/memory', (req, res) => {
 
   const recap = formatMemoryRecap(memory);
   if (!recap) {
-    logger.info({ uid, memoryId: memory.id, structured: memory.structured }, 'Skipping memory — no formatted recap');
+    logger.info({ uid, memoryId: memory.id }, 'Skipping memory — no formatted recap');
     return;
   }
 

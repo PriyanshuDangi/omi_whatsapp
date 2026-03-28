@@ -16,6 +16,7 @@ import { contactsRouter } from './routes/contacts.js';
 import { initSession } from './services/whatsapp.js';
 import { startReminderTick } from './services/reminder.js';
 import { sanitizeUid } from './utils/sanitize.js';
+import { redactBody } from './utils/redact.js';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
@@ -51,7 +52,7 @@ app.use((req, res, next) => {
     method: req.method,
     path: req.originalUrl,
     uid: uid || undefined,
-    body: req.body,
+    body: redactBody(req.body),
   }, 'Request received');
 
   let responseBody: unknown;
