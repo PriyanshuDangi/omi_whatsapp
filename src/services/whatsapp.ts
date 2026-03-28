@@ -8,6 +8,7 @@ import makeWASocket, {
   DisconnectReason,
   proto,
   type Contact,
+  type GroupMetadata,
   type Chat,
   type WAMessage,
   type WAMessageKey,
@@ -51,6 +52,8 @@ const NON_RETRIABLE_CODES = new Set([
 
 /** Canonical contact store: always keyed by phone-number JID (@s.whatsapp.net). */
 const contactStore = new Map<string, Map<string, Contact>>();
+/** Group store keyed by uid → group JID (@g.us) → GroupMetadata. */
+const groupStore = new Map<string, Map<string, GroupMetadata>>();
 
 /**
  * Bidirectional LID ↔ JID map per uid.
@@ -65,6 +68,10 @@ function contactsCachePath(uid: string): string {
   return path.join('sessions', uid, 'contacts.json');
 }
 
+function groupsCachePath(uid: string): string {
+  return path.join('sessions', uid, 'groups.json');
+}
+
 /** Persist the contact store and LID map to disk. */
 function persistContacts(uid: string): void {
   const store = contactStore.get(uid);
@@ -77,6 +84,19 @@ function persistContacts(uid: string): void {
     logger.info({ uid, count: store.size }, 'Persisted contacts to disk');
   } catch (err) {
     logger.error({ uid, err }, 'Failed to persist contacts to disk');
+  }
+}
+
+/** Persist the group store to disk. */
+function persistGroups(uid: string): void {
+  const store = groupStore.get(uid);
+  if (!store) return;
+  try {
+    const groups = Object.fromEntries(store);
+    fs.writeFileSync(groupsCachePath(uid), JSON.stringify({ groups }), 'utf-8');
+    logger.info({ uid, count: store.size }, 'Persisted groups to disk');
+  } catch (err) {
+    logger.error({ uid, err }, 'Failed to persist groups to disk');
   }
 }
 
@@ -106,6 +126,25 @@ function loadCachedContacts(uid: string): void {
     logger.debug({ uid, contacts: store.size, lidMappings: lmap.size }, 'Loaded cached contacts from disk');
   } catch (err) {
     logger.error({ uid, err }, 'Failed to load cached contacts from disk');
+  }
+}
+
+/** Load groups from disk cache. */
+function loadCachedGroups(uid: string): void {
+  const filePath = groupsCachePath(uid);
+  if (!fs.existsSync(filePath)) return;
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const groupData = raw.groups ?? raw;
+    const store = groupStore.get(uid) ?? new Map<string, GroupMetadata>();
+    for (const [jid, group] of Object.entries(groupData)) {
+      if (!jid.endsWith('@g.us')) continue;
+      store.set(jid, group as GroupMetadata);
+    }
+    groupStore.set(uid, store);
+    logger.debug({ uid, groups: store.size }, 'Loaded cached groups from disk');
+  } catch (err) {
+    logger.error({ uid, err }, 'Failed to load cached groups from disk');
   }
 }
 
@@ -202,6 +241,10 @@ function archiveSessionData(uid: string, reason: string): void {
     const savedContactsPath = path.join(sessionDir, 'saved-contacts.json');
     if (fs.existsSync(savedContactsPath)) {
       fs.copyFileSync(savedContactsPath, path.join(archiveDir, 'saved-contacts.json'));
+    }
+    const groupsPath = path.join(sessionDir, 'groups.json');
+    if (fs.existsSync(groupsPath)) {
+      fs.copyFileSync(groupsPath, path.join(archiveDir, 'groups.json'));
     }
 
     fs.writeFileSync(
@@ -347,7 +390,11 @@ export async function initSession(uid: string): Promise<void> {
   if (!contactStore.has(uid)) {
     contactStore.set(uid, new Map());
   }
+  if (!groupStore.has(uid)) {
+    groupStore.set(uid, new Map());
+  }
   loadCachedContacts(uid);
+  loadCachedGroups(uid);
   loadSavedContacts(uid);
 
   // Handle connection updates (QR codes, connection state)
@@ -368,6 +415,13 @@ export async function initSession(uid: string): Promise<void> {
       retryState.delete(uid);
       emit(uid, { type: 'connected' });
       logger.info({ uid, jid: session.userJid }, 'WhatsApp connected');
+
+      // Fetch groups after connect so chat tools can resolve group names.
+      setImmediate(() => {
+        syncGroupsFromWhatsApp(uid).catch((err) => {
+          logger.warn({ uid, err }, 'Failed to fetch groups on connect');
+        });
+      });
     }
 
     if (connection === 'close') {
@@ -590,6 +644,30 @@ function scheduleAppStateResyncIfNeeded(uid: string): void {
 }
 
 /**
+ * Fetch all participating groups from WhatsApp and refresh the in-memory store.
+ */
+async function syncGroupsFromWhatsApp(uid: string): Promise<number> {
+  const session = sessions.get(uid);
+  if (!session?.connected) {
+    throw new Error(`WhatsApp not connected for uid: ${uid}`);
+  }
+
+  const groups = await session.socket.groupFetchAllParticipating();
+  const next = new Map<string, GroupMetadata>();
+
+  for (const [jid, metadata] of Object.entries(groups ?? {})) {
+    if (!jid.endsWith('@g.us') || !metadata) continue;
+    const groupMeta = metadata as GroupMetadata;
+    next.set(jid, { ...groupMeta, id: groupMeta.id || jid });
+  }
+
+  groupStore.set(uid, next);
+  persistGroups(uid);
+  logger.info({ uid, groups: next.size }, 'Groups synced from WhatsApp');
+  return next.size;
+}
+
+/**
  * Manually trigger an app state resync to refresh phonebook contact names.
  * Useful when the automatic sync didn't complete on initial connection.
  *
@@ -619,6 +697,13 @@ export async function resyncContacts(uid: string): Promise<{ before: number; aft
 
   logger.info({ uid, namedBefore, namedAfter, total: contactStore.get(uid)?.size }, 'Manual contact resync completed');
   return { before: namedBefore, after: namedAfter };
+}
+
+/** Manually refresh the group list from WhatsApp. */
+export async function resyncGroups(uid: string): Promise<{ count: number }> {
+  const count = await syncGroupsFromWhatsApp(uid);
+  logger.info({ uid, count }, 'Manual group resync completed');
+  return { count };
 }
 
 /** Count contacts that have a real phonebook name (not just a pushName or bare JID). */
@@ -691,6 +776,7 @@ export async function logoutSession(uid: string): Promise<void> {
   }
 
   contactStore.delete(uid);
+  groupStore.delete(uid);
   emit(uid, { type: 'disconnected', reason: 'logged_out' });
 
   // Remove persisted auth so next setup starts a fresh QR link
@@ -749,6 +835,22 @@ export function hasContacts(uid: string): boolean {
   return !!store && store.size > 0;
 }
 
+/** Get all known groups for a uid. */
+export function getGroups(uid: string): Map<string, GroupMetadata> {
+  return groupStore.get(uid) ?? new Map();
+}
+
+/** Check if groups have been synced for a uid. */
+export function hasGroups(uid: string): boolean {
+  const store = groupStore.get(uid);
+  return !!store && store.size > 0;
+}
+
+/** Check whether either contacts or groups are available for recipient matching. */
+export function hasRecipientContext(uid: string): boolean {
+  return hasContacts(uid) || hasGroups(uid);
+}
+
 /** Wait for contacts to sync, retrying a few times. */
 export async function waitForContacts(uid: string, retries = 10, delayMs = 2000): Promise<boolean> {
   for (let i = 0; i < retries; i++) {
@@ -757,6 +859,16 @@ export async function waitForContacts(uid: string, retries = 10, delayMs = 2000)
     await new Promise((r) => setTimeout(r, delayMs));
   }
   return hasContacts(uid);
+}
+
+/** Wait for contacts or groups to sync, retrying a few times. */
+export async function waitForRecipientContext(uid: string, retries = 10, delayMs = 2000): Promise<boolean> {
+  for (let i = 0; i < retries; i++) {
+    if (hasRecipientContext(uid)) return true;
+    logger.info({ uid, attempt: i + 1, retries }, 'Waiting for contacts/groups to sync');
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+  return hasRecipientContext(uid);
 }
 
 /**

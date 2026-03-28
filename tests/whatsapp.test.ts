@@ -17,6 +17,7 @@ function createMockSocket() {
     },
     user: { id: '919999999999:0@s.whatsapp.net' },
     sendMessage: vi.fn().mockResolvedValue({}),
+    groupFetchAllParticipating: vi.fn().mockResolvedValue({}),
     onWhatsApp: vi.fn().mockResolvedValue([{ exists: true, jid: '14155551234@s.whatsapp.net' }]),
     /** Test helper — fire an event as if Baileys emitted it. */
     _emit(event: string, ...args: any[]) {
@@ -79,8 +80,10 @@ const {
   getContacts,
   getSession,
   hasContacts,
+  getGroups,
   waitForContacts,
   checkWhatsAppNumber,
+  resyncGroups,
 } = await import('../src/services/whatsapp.js');
 
 describe('WhatsApp service', () => {
@@ -192,6 +195,46 @@ describe('WhatsApp service', () => {
 
     const result = await checkWhatsAppNumber('user-l', '+1 415 555 0000');
     expect(result).toEqual({ exists: false });
+  });
+
+  it('connection open fetches groups and populates group store', async () => {
+    mockSocket.groupFetchAllParticipating.mockResolvedValueOnce({
+      '120363000000000000@g.us': {
+        id: '120363000000000000@g.us',
+        subject: 'Family Group',
+        participants: [],
+      },
+    });
+
+    await initSession('user-groups');
+    mockSocket._emit('connection.update', { connection: 'open' });
+    await new Promise((r) => setTimeout(r, 0));
+
+    const groups = getGroups('user-groups');
+    expect(groups.size).toBe(1);
+    expect(groups.get('120363000000000000@g.us')?.subject).toBe('Family Group');
+  });
+
+  it('resyncGroups refreshes groups and returns count', async () => {
+    mockSocket.groupFetchAllParticipating.mockResolvedValue({
+      '120363000000000000@g.us': {
+        id: '120363000000000000@g.us',
+        subject: 'Family Group',
+        participants: [],
+      },
+      '120363111111111111@g.us': {
+        id: '120363111111111111@g.us',
+        subject: 'Work Group',
+        participants: [],
+      },
+    });
+
+    await initSession('user-group-resync');
+    mockSocket._emit('connection.update', { connection: 'open' });
+    const result = await resyncGroups('user-group-resync');
+
+    expect(result).toEqual({ count: 2 });
+    expect(getGroups('user-group-resync').size).toBe(2);
   });
 
   it('disconnect with loggedOut cleans up session', async () => {

@@ -282,7 +282,8 @@
       line-height: 1.4;
     }
 
-    #resync-feedback {
+    #resync-feedback,
+    #resync-groups-feedback {
       font-size: 0.85rem;
       min-height: 1.2rem;
       margin-top: 0.5rem;
@@ -339,9 +340,13 @@
         <ul class="contact-list" id="contact-list"></ul>
 
         <div class="resync-section">
-          <p>Contacts missing names? Re-sync from your phone's address book.</p>
-          <button class="btn btn-secondary" id="resync-contacts-btn">Resync Contacts</button>
+          <p>Contacts or groups missing? Re-sync from WhatsApp.</p>
+          <div class="btn-row">
+            <button class="btn btn-secondary" id="resync-contacts-btn">Resync Contacts</button>
+            <button class="btn btn-secondary" id="resync-groups-btn">Resync Groups</button>
+          </div>
           <div id="resync-feedback"></div>
+          <div id="resync-groups-feedback"></div>
         </div>
       </div>
     </div>
@@ -589,6 +594,8 @@
       // ── Resync contacts ─────────────────────────────────────────
       var resyncBtn = document.getElementById('resync-contacts-btn');
       var resyncFeedback = document.getElementById('resync-feedback');
+      var resyncGroupsBtn = document.getElementById('resync-groups-btn');
+      var resyncGroupsFeedback = document.getElementById('resync-groups-feedback');
 
       resyncBtn.addEventListener('click', function () {
         resyncBtn.disabled = true;
@@ -614,6 +621,34 @@
           .finally(function () {
             resyncBtn.disabled = false;
             resyncBtn.textContent = 'Resync Contacts';
+          });
+      });
+
+      // ── Resync groups ───────────────────────────────────────────
+      resyncGroupsBtn.addEventListener('click', function () {
+        resyncGroupsBtn.disabled = true;
+        resyncGroupsBtn.textContent = 'Syncing...';
+        resyncGroupsFeedback.textContent = '';
+        resyncGroupsFeedback.className = '';
+
+        fetch('/setup/resync-groups' + uidParam, { method: 'POST' })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, json: j }; }); })
+          .then(function (res) {
+            if (!res.ok) {
+              resyncGroupsFeedback.textContent = res.json.error || 'Resync failed.';
+              resyncGroupsFeedback.className = 'feedback-error';
+            } else {
+              resyncGroupsFeedback.textContent = res.json.result || 'Resync complete!';
+              resyncGroupsFeedback.className = 'feedback-success';
+            }
+          })
+          .catch(function () {
+            resyncGroupsFeedback.textContent = 'Network error. Please try again.';
+            resyncGroupsFeedback.className = 'feedback-error';
+          })
+          .finally(function () {
+            resyncGroupsBtn.disabled = false;
+            resyncGroupsBtn.textContent = 'Resync Groups';
           });
       });
 

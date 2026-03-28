@@ -6,6 +6,7 @@
 @host = http://localhost:3000
 @uid = your-uid-here
 @contactName = John
+@groupName = Family Group
 @secret = your-omi-app-secret-here
 
 ### ============================================================
@@ -144,6 +145,19 @@ Content-Type: application/json
 }
 
 ### ============================================================
+### 9b. Chat Tool — Send WhatsApp Message to a Group
+### ============================================================
+
+POST {{host}}/tools/send_message?uid={{uid}}
+Content-Type: application/json
+
+{
+  "uid": "{{uid}}",
+  "contact_name": "{{groupName}}",
+  "message": "Hey everyone — this is a test group message."
+}
+
+### ============================================================
 ### 10. Chat Tool — Set Reminder (to Self)
 ### ============================================================
 
@@ -186,6 +200,17 @@ Content-Type: application/json
 ### ============================================================
 
 POST {{host}}/setup/sync-history?uid={{uid}}
+Content-Type: application/json
+
+{
+  "uid": "{{uid}}"
+}
+
+### ============================================================
+### 13b. Resync Groups (refresh group list)
+### ============================================================
+
+POST {{host}}/setup/resync-groups?uid={{uid}}
 Content-Type: application/json
 
 {

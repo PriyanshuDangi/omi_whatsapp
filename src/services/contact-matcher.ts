@@ -10,13 +10,17 @@
  *    20  edit-distance fuzzy (Levenshtein, scaled)
  */
 
-import type { Contact } from '@whiskeysockets/baileys';
+import type { Contact, GroupMetadata } from '@whiskeysockets/baileys';
 import { distance } from 'fastest-levenshtein';
 import type { SavedContact } from './saved-contacts.js';
 
 export interface MatchedContact {
   jid: string;
   displayName: string;
+}
+
+export interface MatchedRecipient extends MatchedContact {
+  isGroup: boolean;
 }
 
 const SCORE_EXACT = 100;
@@ -142,6 +146,58 @@ function findBestInMap(
   return { score: bestScore, match: bestMatch, source: bestSource };
 }
 
+/** Score a group map and return the best match found by group subject. */
+function findBestGroupInMap(
+  groups: Map<string, GroupMetadata>,
+  query: string,
+  queryTokens: Set<string>,
+): { score: number; match: MatchedRecipient | null } {
+  let bestScore = 0;
+  let bestMatch: MatchedRecipient | null = null;
+
+  for (const [jid, group] of groups) {
+    if (!jid.endsWith('@g.us')) continue;
+    const subject = normalize(group.subject || '');
+    if (!subject) continue;
+
+    const score = scoreVariant(query, queryTokens, subject);
+    if (score > bestScore) {
+      bestScore = score;
+      bestMatch = {
+        jid,
+        displayName: group.subject || jid,
+        isGroup: true,
+      };
+    }
+    if (bestScore >= SCORE_EXACT) return { score: bestScore, match: bestMatch };
+  }
+
+  return { score: bestScore, match: bestMatch };
+}
+
+function findBestContactWithScore(
+  contacts: Map<string, Contact>,
+  query: string,
+  queryTokens: Set<string>,
+  savedContacts?: Map<string, SavedContact>,
+): { score: number; match: MatchedContact | null } {
+  // First pass: saved contacts get priority
+  if (savedContacts && savedContacts.size > 0) {
+    const saved = findBestInMap(savedContacts, query, queryTokens, 0, null, undefined);
+    if (saved.match && saved.score >= SCORE_FIRST_NAME) {
+      return { score: saved.score, match: saved.match };
+    }
+
+    // If saved contacts had a weaker match, carry it as the baseline
+    const best = findBestInMap(contacts, query, queryTokens, saved.score, saved.match, saved.source);
+    return { score: best.score, match: best.match };
+  }
+
+  // No saved contacts — scan Baileys contacts only
+  const best = findBestInMap(contacts, query, queryTokens, 0, null, undefined);
+  return { score: best.score, match: best.match };
+}
+
 /**
  * Find a WhatsApp contact by name. Saved contacts (user-managed) are checked
  * first and take priority — a strong match (>= first-name tier) short-circuits
@@ -156,20 +212,38 @@ export function findContact(
   if (!query) return null;
 
   const queryTokens = new Set(query.split(/\s+/));
+  const { match } = findBestContactWithScore(contacts, query, queryTokens, savedContacts);
+  return match;
+}
 
-  // First pass: saved contacts get priority
-  if (savedContacts && savedContacts.size > 0) {
-    const saved = findBestInMap(savedContacts, query, queryTokens, 0, null, undefined);
-    if (saved.match && saved.score >= SCORE_FIRST_NAME) {
-      return saved.match;
-    }
+/**
+ * Resolve a recipient by name against both contacts and groups.
+ * Contacts win score ties to reduce accidental group sends.
+ */
+export function findRecipient(
+  contacts: Map<string, Contact>,
+  groups: Map<string, GroupMetadata>,
+  name: string,
+  savedContacts?: Map<string, SavedContact>,
+): MatchedRecipient | null {
+  const query = normalize(name);
+  if (!query) return null;
 
-    // If saved contacts had a weaker match, carry it as the baseline
-    const { match } = findBestInMap(contacts, query, queryTokens, saved.score, saved.match, saved.source);
-    return match;
+  const queryTokens = new Set(query.split(/\s+/));
+  const contact = findBestContactWithScore(contacts, query, queryTokens, savedContacts);
+  const group = findBestGroupInMap(groups, query, queryTokens);
+
+  if (!contact.match && !group.match) {
+    return null;
   }
 
-  // No saved contacts — scan Baileys contacts only
-  const { match } = findBestInMap(contacts, query, queryTokens, 0, null, undefined);
-  return match;
+  if (group.match && group.score > contact.score) {
+    return group.match;
+  }
+
+  if (contact.match) {
+    return { ...contact.match, isGroup: false };
+  }
+
+  return group.match;
 }

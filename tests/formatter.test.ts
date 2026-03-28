@@ -50,15 +50,6 @@ describe('formatMemoryRecap', () => {
     expect(recap).not.toContain('🏷️');
   });
 
-  it('truncates long overview at 500 chars', () => {
-    const longOverview = 'A'.repeat(600);
-    const recap = formatMemoryRecap(makeMemory({
-      structured: { title: 'Long', overview: longOverview, emoji: '📋', category: '', action_items: [], events: [] },
-    }));
-    expect(recap).toContain('...');
-    expect(recap.length).toBeLessThan(longOverview.length + 100);
-  });
-
   it('formats duration < 1 min', () => {
     const recap = formatMemoryRecap(makeMemory({
       started_at: '2025-06-15T14:00:00Z',

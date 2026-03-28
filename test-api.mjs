@@ -10,6 +10,7 @@ import 'dotenv/config';
 const HOST = process.env.HOST || 'http://localhost:3000';
 const UID = process.env.TEST_UID || '';
 const CONTACT = process.env.TEST_CONTACT || '';
+const GROUP = process.env.TEST_GROUP || '';
 const SECRET = process.env.OMI_APP_SECRET || '';
 
 if (!UID) {
@@ -66,6 +67,7 @@ console.log(`  ========================`);
 console.log(`  Host:    ${HOST}`);
 console.log(`  UID:     ${UID}`);
 console.log(`  Contact: ${CONTACT || '(none — contact tests will be skipped)'}\n`);
+console.log(`  Group:   ${GROUP || '(none — group tests will be skipped)'}\n`);
 
 await run('1. Health check', async () => {
   const { json } = await request('GET', '/health');
@@ -147,6 +149,18 @@ if (CONTACT) {
   });
 } else {
   console.log('  –  7. Chat tool — send message to contact (SKIPPED, no TEST_CONTACT)');
+}
+
+if (GROUP) {
+  await run('7b. Chat tool — send message to group', async () => {
+    const { json } = await request('POST', `/tools/send_message?uid=${UID}`, {
+      body: { uid: UID, contact_name: GROUP, message: '[Test] Group message from API test runner.' },
+    });
+    assert(json.result, `Unexpected response: ${JSON.stringify(json)}`);
+    console.log(`     → ${json.result}`);
+  });
+} else {
+  console.log('  –  7b. Chat tool — send message to group (SKIPPED, no TEST_GROUP)');
 }
 
 await run('8. Chat tool — send meeting notes to self', async () => {
@@ -284,6 +298,14 @@ await run('22. QR code — setup status is false (not yet linked)', async () => 
   const { json } = await request('GET', `/setup/status?uid=${QR_UID}`);
   assert(typeof json.is_setup_completed === 'boolean', 'Missing is_setup_completed field');
   assert(json.is_setup_completed === false, `Expected false for fresh UID, got ${json.is_setup_completed}`);
+});
+
+await run('22b. Setup — resync groups endpoint', async () => {
+  const { json } = await request('POST', `/setup/resync-groups?uid=${UID}`, {
+    body: { uid: UID },
+  });
+  assert(json.result, `Unexpected response: ${JSON.stringify(json)}`);
+  console.log(`     → ${json.result}`);
 });
 
 await run('23. QR code — SSE stream emits a QR data URL', async () => {

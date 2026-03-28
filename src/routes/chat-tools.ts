@@ -14,7 +14,7 @@
 
 import { Router } from 'express';
 import { logger } from '../utils/logger.js';
-import { findContact } from '../services/contact-matcher.js';
+import { findRecipient } from '../services/contact-matcher.js';
 import { scheduleReminder } from '../services/reminder.js';
 import { getSavedContacts, saveContact } from '../services/saved-contacts.js';
 import {
@@ -22,11 +22,12 @@ import {
   sendSelfMessage,
   sendMessage,
   getContacts,
-  waitForContacts,
+  getGroups,
+  waitForRecipientContext,
   checkWhatsAppNumber,
 } from '../services/whatsapp.js';
 
-const CONTACT_NOT_FOUND_HINT = 'You can save this contact by saying: "Save contact NAME with number +COUNTRYCODE_NUMBER"';
+const RECIPIENT_NOT_FOUND_HINT = 'If this is a person, you can save this contact by saying: "Save contact NAME with number +COUNTRYCODE_NUMBER"';
 const E164_REGEX = /^\+[1-9]\d{6,14}$/;
 
 // ---------------------------------------------------------------------------
@@ -40,14 +41,14 @@ function buildManifest(baseUrl: string) {
       {
         name: 'send_whatsapp_message',
         description:
-          'Send a WhatsApp message to a contact. Use this when the user wants to send a message, text, or WhatsApp someone. Examples: "Send a WhatsApp message to John saying hi", "Text Mom that I\'ll be late", "Message Sarah asking about dinner plans".',
+          'Send a WhatsApp message to a contact or group. Use this when the user wants to send a message, text, or WhatsApp someone or a group. Examples: "Send a WhatsApp message to John saying hi", "Text Mom that I\'ll be late", "Message the family group that I am running late".',
         endpoint: `${baseUrl}/tools/send_message`,
         method: 'POST',
         parameters: {
           properties: {
             contact_name: {
               type: 'string',
-              description: 'The name of the contact to send the message to (e.g., "John", "Mom", "Sarah")',
+              description: 'The name of the WhatsApp contact or group to send the message to (e.g., "John", "Mom", "Family Group")',
             },
             message: {
               type: 'string',
@@ -80,14 +81,14 @@ function buildManifest(baseUrl: string) {
       {
         name: 'send_recap_to_contact',
         description:
-          'Send meeting notes, conversation recap, or summary to a specific WhatsApp contact. Use this when the user says "send the meeting notes to John on WhatsApp", "share the recap with Sarah", "forward the summary to Mom on WhatsApp", or "send today\'s notes to my manager".',
+          'Send meeting notes, conversation recap, or summary to a specific WhatsApp contact or group. Use this when the user says "send the meeting notes to John on WhatsApp", "share the recap with Sarah", "forward the summary to Mom on WhatsApp", or "send today\'s notes to the team group".',
         endpoint: `${baseUrl}/tools/send_recap_to_contact`,
         method: 'POST',
         parameters: {
           properties: {
             contact_name: {
               type: 'string',
-              description: 'The name of the contact to send the recap to (e.g., "John", "Mom", "Sarah")',
+              description: 'The name of the WhatsApp contact or group to send the recap to (e.g., "John", "Mom", "Family Group")',
             },
             summary: {
               type: 'string',
@@ -102,7 +103,7 @@ function buildManifest(baseUrl: string) {
       {
         name: 'set_whatsapp_reminder',
         description:
-          'Set a timed reminder that will be sent as a WhatsApp message. If no contact name is provided, the reminder is sent to the user themselves. Use this when the user says "remind me in 30 minutes to call the dentist", "set a reminder for 1 hour to check email", or "remind John in 10 minutes about the meeting".',
+          'Set a timed reminder that will be sent as a WhatsApp message. If no contact name is provided, the reminder is sent to the user themselves. The optional target can be a contact or group. Use this when the user says "remind me in 30 minutes to call the dentist", "set a reminder for 1 hour to check email", or "remind the family group in 10 minutes".',
         endpoint: `${baseUrl}/tools/set_reminder`,
         method: 'POST',
         parameters: {
@@ -117,7 +118,7 @@ function buildManifest(baseUrl: string) {
             },
             contact_name: {
               type: 'string',
-              description: 'Optional: name of the contact to send the reminder to. If not provided, reminder is sent to the user themselves.',
+              description: 'Optional: name of the contact or group to send the reminder to. If not provided, reminder is sent to the user themselves.',
             },
           },
           required: ['message', 'delay_minutes'],
@@ -153,6 +154,11 @@ function buildManifest(baseUrl: string) {
 
 export const manifestRouter = Router();
 export const toolsRouter = Router();
+
+function isGroupAnnouncementsOnly(uid: string, jid: string): boolean {
+  const group = getGroups(uid).get(jid);
+  return group?.announce === true;
+}
 
 // ---------------------------------------------------------------------------
 // GET /.well-known/omi-tools.json
@@ -196,30 +202,43 @@ toolsRouter.post('/send_message', async (req, res) => {
     return;
   }
 
-  // Wait for contacts to be available
-  const hasCtx = await waitForContacts(uid, 5, 1000);
+  // Wait for contacts/groups to be available
+  const hasCtx = await waitForRecipientContext(uid, 5, 1000);
   if (!hasCtx) {
-    logger.warn({ uid }, 'Chat tool: send_message — contacts not synced');
-    res.status(500).json({ error: 'Contacts not synced yet. Please try again in a moment.' });
+    logger.warn({ uid }, 'Chat tool: send_message — contacts/groups not synced');
+    res.status(500).json({ error: 'Contacts/groups not synced yet. Please try again in a moment.' });
     return;
   }
 
   const contacts = getContacts(uid);
+  const groups = getGroups(uid);
   const saved = getSavedContacts(uid);
-  const match = findContact(contacts, contactName, saved);
+  const match = findRecipient(contacts, groups, contactName, saved);
 
-  logger.info({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
+  logger.info({
+    uid,
+    contactName,
+    matched: match?.displayName ?? null,
+    jid: match?.jid ?? null,
+    isGroup: match?.isGroup ?? null,
+  }, 'Chat tool: recipient match result');
 
   if (!match) {
-    logger.warn({ uid, contactName }, 'Chat tool: send_message — contact not found');
-    res.status(404).json({ error: `Could not find a WhatsApp contact named "${contactName}". ${CONTACT_NOT_FOUND_HINT}` });
+    logger.warn({ uid, contactName }, 'Chat tool: send_message — recipient not found');
+    res.status(404).json({ error: `Could not find a WhatsApp contact or group named "${contactName}". ${RECIPIENT_NOT_FOUND_HINT}` });
+    return;
+  }
+
+  if (match.isGroup && isGroupAnnouncementsOnly(uid, match.jid)) {
+    logger.warn({ uid, group: match.displayName, jid: match.jid }, 'Chat tool: send_message — group is announcements-only');
+    res.status(403).json({ error: `Cannot send to "${match.displayName}" because only admins can post in that group.` });
     return;
   }
 
   try {
     await sendMessage(uid, match.jid, message);
-    logger.info({ uid, contact: match.displayName, jid: match.jid }, 'Chat tool: message sent');
-    res.json({ result: `Message sent to ${match.displayName} on WhatsApp.` });
+    logger.info({ uid, recipient: match.displayName, jid: match.jid, isGroup: match.isGroup }, 'Chat tool: message sent');
+    res.json({ result: `Message sent to ${match.isGroup ? `group "${match.displayName}"` : match.displayName} on WhatsApp.` });
   } catch (err) {
     logger.error({ uid, contactName, err }, 'Chat tool: failed to send message');
     res.status(500).json({ error: `Failed to send message to ${match.displayName}. Please try again.` });
@@ -298,31 +317,44 @@ toolsRouter.post('/send_recap_to_contact', async (req, res) => {
     return;
   }
 
-  // Wait for contacts to be available
-  const hasCtx = await waitForContacts(uid, 5, 1000);
+  // Wait for contacts/groups to be available
+  const hasCtx = await waitForRecipientContext(uid, 5, 1000);
   if (!hasCtx) {
-    logger.warn({ uid }, 'Chat tool: send_recap_to_contact — contacts not synced');
-    res.status(500).json({ error: 'Contacts not synced yet. Please try again in a moment.' });
+    logger.warn({ uid }, 'Chat tool: send_recap_to_contact — contacts/groups not synced');
+    res.status(500).json({ error: 'Contacts/groups not synced yet. Please try again in a moment.' });
     return;
   }
 
   const contacts = getContacts(uid);
+  const groups = getGroups(uid);
   const saved = getSavedContacts(uid);
-  const match = findContact(contacts, contactName, saved);
+  const match = findRecipient(contacts, groups, contactName, saved);
 
-  logger.info({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
+  logger.info({
+    uid,
+    contactName,
+    matched: match?.displayName ?? null,
+    jid: match?.jid ?? null,
+    isGroup: match?.isGroup ?? null,
+  }, 'Chat tool: recipient match result');
 
   if (!match) {
-    logger.warn({ uid, contactName }, 'Chat tool: send_recap_to_contact — contact not found');
-    res.status(404).json({ error: `Could not find a WhatsApp contact named "${contactName}". ${CONTACT_NOT_FOUND_HINT}` });
+    logger.warn({ uid, contactName }, 'Chat tool: send_recap_to_contact — recipient not found');
+    res.status(404).json({ error: `Could not find a WhatsApp contact or group named "${contactName}". ${RECIPIENT_NOT_FOUND_HINT}` });
+    return;
+  }
+
+  if (match.isGroup && isGroupAnnouncementsOnly(uid, match.jid)) {
+    logger.warn({ uid, group: match.displayName, jid: match.jid }, 'Chat tool: send_recap_to_contact — group is announcements-only');
+    res.status(403).json({ error: `Cannot send to "${match.displayName}" because only admins can post in that group.` });
     return;
   }
 
   try {
     const formatted = `📋 *Meeting Notes from Omi*\n\n${summary}`;
     await sendMessage(uid, match.jid, formatted);
-    logger.info({ uid, contact: match.displayName, jid: match.jid }, 'Chat tool: recap sent to contact');
-    res.json({ result: `Meeting recap sent to ${match.displayName} on WhatsApp.` });
+    logger.info({ uid, recipient: match.displayName, jid: match.jid, isGroup: match.isGroup }, 'Chat tool: recap sent');
+    res.json({ result: `Meeting recap sent to ${match.isGroup ? `group "${match.displayName}"` : match.displayName} on WhatsApp.` });
   } catch (err) {
     logger.error({ uid, contactName, err }, 'Chat tool: failed to send recap to contact');
     res.status(500).json({ error: `Failed to send recap to ${match.displayName}. Please try again.` });
@@ -368,27 +400,40 @@ toolsRouter.post('/set_reminder', async (req, res) => {
   let targetName = 'yourself';
 
   if (contactName) {
-    const hasCtx = await waitForContacts(uid, 5, 1000);
+    const hasCtx = await waitForRecipientContext(uid, 5, 1000);
     if (!hasCtx) {
-      logger.warn({ uid }, 'Chat tool: set_reminder — contacts not synced');
-      res.status(500).json({ error: 'Contacts not synced yet. Please try again in a moment.' });
+      logger.warn({ uid }, 'Chat tool: set_reminder — contacts/groups not synced');
+      res.status(500).json({ error: 'Contacts/groups not synced yet. Please try again in a moment.' });
       return;
     }
 
     const contacts = getContacts(uid);
+    const groups = getGroups(uid);
     const saved = getSavedContacts(uid);
-    const match = findContact(contacts, contactName, saved);
+    const match = findRecipient(contacts, groups, contactName, saved);
 
-    logger.info({ uid, contactName, matched: match?.displayName ?? null, jid: match?.jid ?? null }, 'Chat tool: contact match result');
+    logger.info({
+      uid,
+      contactName,
+      matched: match?.displayName ?? null,
+      jid: match?.jid ?? null,
+      isGroup: match?.isGroup ?? null,
+    }, 'Chat tool: recipient match result');
 
     if (!match) {
-      logger.warn({ uid, contactName }, 'Chat tool: set_reminder — contact not found');
-      res.status(404).json({ error: `Could not find a WhatsApp contact named "${contactName}". ${CONTACT_NOT_FOUND_HINT}` });
+      logger.warn({ uid, contactName }, 'Chat tool: set_reminder — recipient not found');
+      res.status(404).json({ error: `Could not find a WhatsApp contact or group named "${contactName}". ${RECIPIENT_NOT_FOUND_HINT}` });
+      return;
+    }
+
+    if (match.isGroup && isGroupAnnouncementsOnly(uid, match.jid)) {
+      logger.warn({ uid, group: match.displayName, jid: match.jid }, 'Chat tool: set_reminder — group is announcements-only');
+      res.status(403).json({ error: `Cannot send to "${match.displayName}" because only admins can post in that group.` });
       return;
     }
 
     target = match.jid;
-    targetName = match.displayName;
+    targetName = match.isGroup ? `group "${match.displayName}"` : match.displayName;
   }
 
   scheduleReminder(uid, message, delayMinutes, target, targetName);

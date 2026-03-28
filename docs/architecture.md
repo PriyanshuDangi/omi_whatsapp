@@ -8,13 +8,13 @@ Single-process Node.js + Express server. No database, no microservices — every
 src/
 ├── index.ts                  # Entry point — Express app, route mounting, startup
 ├── routes/
-│   ├── setup.ts              # GET /setup, GET /setup/status, GET /setup/events, POST /setup/sync-history
+│   ├── setup.ts              # Setup UI + SSE + logout + resync-contacts + resync-groups + sync-history
 │   ├── webhook.ts            # POST /webhook/memory
 │   └── chat-tools.ts         # GET /.well-known/omi-tools.json, POST /tools/*
 ├── services/
-│   ├── whatsapp.ts           # Baileys connection lifecycle, QR, messaging, contacts
+│   ├── whatsapp.ts           # Baileys lifecycle, QR, messaging, contacts, groups
 │   ├── formatter.ts          # Omi memory → WhatsApp recap message
-│   ├── contact-matcher.ts    # Scored fuzzy name → WhatsApp JID matching
+│   ├── contact-matcher.ts    # Scored fuzzy recipient matching (contact/group)
 │   └── reminder.ts           # Timed WhatsApp reminder scheduler
 ├── types/
 │   ├── omi.ts                # OmiMemory, TranscriptSegment, ActionItem, Structured
@@ -55,9 +55,16 @@ User asks Omi AI: "Send a WhatsApp message to John saying hi"
   → Omi AI decides to call send_whatsapp_message tool
   → POST /tools/send_message { uid, contact_name, message }
   → chat-tools.ts: validate params, check WhatsApp connected
-  → contact-matcher.ts: fuzzy match contact_name
+  → contact-matcher.ts: findRecipient() across contacts + groups
   → whatsapp.ts: sendMessage() to matched JID
   → Return { result: "Message sent to John on WhatsApp." }
+
+User asks Omi AI: "Send this to the family group"
+  → Omi AI calls send_whatsapp_message with contact_name="Family Group"
+  → chat-tools.ts: same endpoint + validation path
+  → contact-matcher.ts: group subject match wins if score > contact
+  → whatsapp.ts: sendMessage() to group JID (@g.us)
+  → Return { result: "Message sent to group \"Family Group\" on WhatsApp." }
 
 User asks Omi AI: "Send me the meeting notes on WhatsApp"
   → Omi AI decides to call send_meeting_notes tool
@@ -89,6 +96,19 @@ POST /setup/sync-history?uid=... { count: 50 }
   → messaging-history.set fires again → contacts re-enriched
 ```
 
+### Group Sync & Resync
+
+```
+Baileys connection.update (open)
+  → whatsapp.ts: groupFetchAllParticipating()
+  → refresh in-memory groupStore (uid → groupJid → GroupMetadata)
+  → persist groups cache to sessions/{uid}/groups.json
+
+POST /setup/resync-groups?uid=...
+  → whatsapp.ts: resyncGroups() → groupFetchAllParticipating()
+  → update cache for newly joined/renamed groups
+```
+
 ## State Management
 
 | State | Storage | Lifetime |
@@ -96,6 +116,7 @@ POST /setup/sync-history?uid=... { count: 50 }
 | Baileys auth credentials | Filesystem (`sessions/{uid}/`) | Persistent across restarts |
 | Active WhatsApp sockets | In-memory `Map<uid, WhatsAppSession>` | Process lifetime |
 | Contacts | In-memory `Map<uid, Map<jid, Contact>>` + disk cache | Process lifetime, enriched from history sync |
+| Groups | In-memory `Map<uid, Map<jid, GroupMetadata>>` + disk cache | Process lifetime, refreshed on connect or resync |
 | SSE listeners | In-memory `Map<uid, Set<callback>>` | Until browser disconnects |
 
 ## Key Design Decisions
@@ -106,3 +127,5 @@ POST /setup/sync-history?uid=... { count: 50 }
 - **SSE for setup** — Real-time QR updates without polling. EventSource in the browser, simple write on the server.
 - **Baileys auto-reconnect** — On disconnect (unless logged out), the service automatically re-initializes the session.
 - **Contact enrichment from multiple sources** — Contacts are enriched from three sources during history sync: direct contact records, chat metadata (user's address book names), and message push names. Chat names take priority as they reflect the user's saved contact name, not the sender's self-set name.
+- **Unified recipient resolution** — The same tool endpoints can target either contacts or groups. Matching compares both spaces and prefers contacts on score ties to avoid accidental group sends.
+- **Manual group refresh path** — `POST /setup/resync-groups` lets users pull newly joined/renamed groups without reconnecting WhatsApp.

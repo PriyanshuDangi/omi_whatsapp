@@ -8,7 +8,8 @@ const mockIsConnected = vi.fn().mockReturnValue(true);
 const mockSendSelfMessage = vi.fn().mockResolvedValue(undefined);
 const mockSendMessage = vi.fn().mockResolvedValue(undefined);
 const mockGetContacts = vi.fn().mockReturnValue(makeContacts());
-const mockWaitForContacts = vi.fn().mockResolvedValue(true);
+const mockGetGroups = vi.fn().mockReturnValue(new Map());
+const mockWaitForRecipientContext = vi.fn().mockResolvedValue(true);
 const mockCheckWhatsAppNumber = vi.fn().mockResolvedValue({
   exists: true,
   jid: '919876543210@s.whatsapp.net',
@@ -19,7 +20,8 @@ vi.mock('../../src/services/whatsapp.js', () => ({
   sendSelfMessage: (...args: any[]) => mockSendSelfMessage(...args),
   sendMessage: (...args: any[]) => mockSendMessage(...args),
   getContacts: (...args: any[]) => mockGetContacts(...args),
-  waitForContacts: (...args: any[]) => mockWaitForContacts(...args),
+  getGroups: (...args: any[]) => mockGetGroups(...args),
+  waitForRecipientContext: (...args: any[]) => mockWaitForRecipientContext(...args),
   checkWhatsAppNumber: (...args: any[]) => mockCheckWhatsAppNumber(...args),
 }));
 
@@ -64,8 +66,9 @@ describe('Chat tools routes', () => {
     vi.clearAllMocks();
     mockIsConnected.mockReturnValue(true);
     mockGetContacts.mockReturnValue(makeContacts());
+    mockGetGroups.mockReturnValue(new Map());
     mockGetSavedContacts.mockReturnValue(new Map());
-    mockWaitForContacts.mockResolvedValue(true);
+    mockWaitForRecipientContext.mockResolvedValue(true);
     mockCheckWhatsAppNumber.mockResolvedValue({
       exists: true,
       jid: '919876543210@s.whatsapp.net',
@@ -156,14 +159,55 @@ describe('Chat tools routes', () => {
     });
 
     it('returns 500 when contacts are not synced', async () => {
-      mockWaitForContacts.mockResolvedValue(false);
+      mockWaitForRecipientContext.mockResolvedValue(false);
 
       const res = await request(app)
         .post('/tools/send_message?uid=test-user')
         .send({ contact_name: 'John Smith', message: 'Hi John!' });
 
       expect(res.status).toBe(500);
-      expect(res.body.error).toMatch(/contacts not synced/i);
+      expect(res.body.error).toMatch(/contacts\/groups not synced/i);
+      expect(mockSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('sends message to a matched group', async () => {
+      mockGetGroups.mockReturnValue(new Map([
+        ['120363000000000000@g.us', {
+          id: '120363000000000000@g.us',
+          subject: 'Family Group',
+          participants: [],
+        }],
+      ]));
+
+      const res = await request(app)
+        .post('/tools/send_message?uid=test-user')
+        .send({ uid: 'test-user', contact_name: 'Family Group', message: 'Hi group!' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.result).toMatch(/group/i);
+      expect(mockSendMessage).toHaveBeenCalledWith(
+        'test-user',
+        '120363000000000000@g.us',
+        'Hi group!',
+      );
+    });
+
+    it('returns 403 for announcements-only groups', async () => {
+      mockGetGroups.mockReturnValue(new Map([
+        ['120363000000000000@g.us', {
+          id: '120363000000000000@g.us',
+          subject: 'Family Group',
+          announce: true,
+          participants: [],
+        }],
+      ]));
+
+      const res = await request(app)
+        .post('/tools/send_message?uid=test-user')
+        .send({ uid: 'test-user', contact_name: 'Family Group', message: 'Hi group!' });
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/only admins/i);
       expect(mockSendMessage).not.toHaveBeenCalled();
     });
 
@@ -272,14 +316,14 @@ describe('Chat tools routes', () => {
     });
 
     it('returns 500 when contacts are not synced', async () => {
-      mockWaitForContacts.mockResolvedValue(false);
+      mockWaitForRecipientContext.mockResolvedValue(false);
 
       const res = await request(app)
         .post('/tools/send_recap_to_contact?uid=test-user')
         .send({ contact_name: 'Alice', summary: 'Recap text.' });
 
       expect(res.status).toBe(500);
-      expect(res.body.error).toMatch(/contacts not synced/i);
+      expect(res.body.error).toMatch(/contacts\/groups not synced/i);
     });
 
     it('returns 500 when sending recap fails', async () => {
@@ -366,14 +410,14 @@ describe('Chat tools routes', () => {
     });
 
     it('returns 500 when contact reminder waits for unsynced contacts', async () => {
-      mockWaitForContacts.mockResolvedValue(false);
+      mockWaitForRecipientContext.mockResolvedValue(false);
 
       const res = await request(app)
         .post('/tools/set_reminder?uid=test-user')
         .send({ message: 'Meeting', delay_minutes: 10, contact_name: 'Mom' });
 
       expect(res.status).toBe(500);
-      expect(res.body.error).toMatch(/contacts not synced/i);
+      expect(res.body.error).toMatch(/contacts\/groups not synced/i);
     });
 
     it('returns 404 when reminder contact is not found', async () => {

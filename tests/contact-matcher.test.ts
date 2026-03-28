@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { findContact } from '../src/services/contact-matcher.js';
+import { findContact, findRecipient } from '../src/services/contact-matcher.js';
 import { makeContacts } from './fixtures/contacts.js';
 
 describe('findContact', () => {
@@ -114,5 +114,60 @@ describe('findContact', () => {
     const result = findContact(contacts, 'John Smith', saved as any);
     expect(result).not.toBeNull();
     expect(result!.jid).toBe('919876543210@s.whatsapp.net');
+  });
+});
+
+describe('findRecipient', () => {
+  const contacts = makeContacts();
+
+  it('matches a group by subject name', () => {
+    const groups = new Map([
+      ['120363000000000000@g.us', {
+        id: '120363000000000000@g.us',
+        subject: 'Family Group',
+        participants: [],
+      }],
+    ]);
+
+    const result = findRecipient(contacts, groups as any, 'Family Group');
+    expect(result).not.toBeNull();
+    expect(result!.jid).toBe('120363000000000000@g.us');
+    expect(result!.isGroup).toBe(true);
+  });
+
+  it('prefers contact over group on score tie', () => {
+    const contactsWithTie = new Map(contacts);
+    contactsWithTie.set('14155559999@s.whatsapp.net', {
+      id: '14155559999@s.whatsapp.net',
+      name: 'Project Alpha',
+    } as any);
+
+    const groups = new Map([
+      ['120363111111111111@g.us', {
+        id: '120363111111111111@g.us',
+        subject: 'Project Alpha',
+        participants: [],
+      }],
+    ]);
+
+    const result = findRecipient(contactsWithTie, groups as any, 'Project Alpha');
+    expect(result).not.toBeNull();
+    expect(result!.jid).toBe('14155559999@s.whatsapp.net');
+    expect(result!.isGroup).toBe(false);
+  });
+
+  it('matches a group with partial/fuzzy text', () => {
+    const groups = new Map([
+      ['120363000000000000@g.us', {
+        id: '120363000000000000@g.us',
+        subject: 'Family Group',
+        participants: [],
+      }],
+    ]);
+
+    const result = findRecipient(contacts, groups as any, 'family');
+    expect(result).not.toBeNull();
+    expect(result!.jid).toBe('120363000000000000@g.us');
+    expect(result!.isGroup).toBe(true);
   });
 });
