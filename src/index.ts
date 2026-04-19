@@ -30,7 +30,7 @@ app.use('/contacts/import', express.json({ limit: '1mb' }));
 app.use('/setup/contacts/import', express.json({ limit: '1mb' }));
 
 // Parse JSON bodies (Omi webhook payloads)
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 
 // ---------------------------------------------------------------------------
 // Request-scoped tid — from header or generated; echoed in response; used in all logs via pino mixin
@@ -194,6 +194,20 @@ async function restoreSessions(): Promise<void> {
 
   logger.info({ count: uids.length }, 'All sessions restored');
 }
+
+// ---------------------------------------------------------------------------
+// Global error handler — catches middleware errors (e.g. PayloadTooLargeError)
+// so the process does not crash on malformed/oversized requests.
+// ---------------------------------------------------------------------------
+app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const e = err as { type?: string; status?: number; message?: string };
+  if (e.type === 'entity.too.large') {
+    res.status(413).json({ error: 'Payload too large' });
+    return;
+  }
+  logger.error({ err, path: req.originalUrl }, 'Unhandled middleware error');
+  res.status(e.status ?? 500).json({ error: e.message ?? 'Internal server error' });
+});
 
 // ---------------------------------------------------------------------------
 // Start server
