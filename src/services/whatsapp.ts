@@ -19,7 +19,7 @@ import fs from 'fs';
 import path from 'path';
 import { logger, baileysLogger } from '../utils/logger.js';
 import type { WhatsAppSession, SessionEventCallback, SessionEvent } from '../types/whatsapp.js';
-import { loadSavedContacts } from './saved-contacts.js';
+import { loadSavedContacts, seedDemoContact } from './saved-contacts.js';
 
 // Active sessions keyed by uid
 const sessions = new Map<string, WhatsAppSession>();
@@ -396,6 +396,7 @@ export async function initSession(uid: string): Promise<void> {
   loadCachedContacts(uid);
   loadCachedGroups(uid);
   loadSavedContacts(uid);
+  seedDemoContact(uid);
 
   // Handle connection updates (QR codes, connection state)
   socket.ev.on('connection.update', (update) => {

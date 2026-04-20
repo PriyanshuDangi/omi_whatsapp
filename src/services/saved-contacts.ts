@@ -11,7 +11,7 @@ import path from 'path';
 import type { Contact } from '@whiskeysockets/baileys';
 import { logger } from '../utils/logger.js';
 
-export type ContactSource = 'manual' | 'import';
+export type ContactSource = 'manual' | 'import' | 'demo';
 
 export interface SavedContact extends Contact {
   addedAt: string;
@@ -26,7 +26,18 @@ export interface ImportStats {
   manualPreserved: number;
 }
 
+/** Per-uid metadata persisted alongside saved contacts. */
+interface SavedContactsMeta {
+  /**
+   * Whether the demo contact has been seeded for this uid. The flag is set the
+   * first time we seed and never cleared — so if the user deletes the demo
+   * contact, we don't keep re-adding it on subsequent restarts.
+   */
+  demoSeeded?: boolean;
+}
+
 const savedContactStore = new Map<string, Map<string, SavedContact>>();
+const savedContactsMeta = new Map<string, SavedContactsMeta>();
 
 export function savedContactsPath(uid: string): string {
   return path.join('sessions', uid, 'saved-contacts.json');
@@ -40,6 +51,7 @@ export function loadSavedContacts(uid: string): void {
   try {
     const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     const contactData: Record<string, SavedContact> = raw.contacts ?? {};
+    const meta: SavedContactsMeta = raw.meta ?? {};
 
     const store = savedContactStore.get(uid) ?? new Map<string, SavedContact>();
     for (const [jid, contact] of Object.entries(contactData)) {
@@ -48,8 +60,9 @@ export function loadSavedContacts(uid: string): void {
       store.set(jid, contact);
     }
     savedContactStore.set(uid, store);
+    savedContactsMeta.set(uid, meta);
 
-    logger.debug({ uid, count: store.size }, 'Loaded saved contacts from disk');
+    logger.debug({ uid, count: store.size, demoSeeded: !!meta.demoSeeded }, 'Loaded saved contacts from disk');
   } catch (err) {
     logger.error({ uid, err }, 'Failed to load saved contacts from disk');
   }
@@ -67,7 +80,8 @@ function persistSavedContacts(uid: string): void {
     }
 
     const contacts = Object.fromEntries(store);
-    fs.writeFileSync(savedContactsPath(uid), JSON.stringify({ contacts }, null, 2), 'utf-8');
+    const meta = savedContactsMeta.get(uid) ?? {};
+    fs.writeFileSync(savedContactsPath(uid), JSON.stringify({ contacts, meta }, null, 2), 'utf-8');
     logger.info({ uid, count: store.size }, 'Persisted saved contacts to disk');
   } catch (err) {
     logger.error({ uid, err }, 'Failed to persist saved contacts to disk');
@@ -169,6 +183,53 @@ export function importContacts(uid: string, contacts: Array<{ name: string; phon
   persistSavedContacts(uid);
 
   return stats;
+}
+
+/**
+ * Seed a single demo contact (configured via DEMO_CONTACT_NAME + DEMO_CONTACT_PHONE)
+ * into this uid's saved contacts. Idempotent — runs at most once per uid via the
+ * `meta.demoSeeded` marker, so deleting the demo contact later won't bring it back.
+ *
+ * The demo contact lets new users test "send a message to {name}" without first
+ * having to save a real contact. It behaves like any other saved contact and can
+ * be deleted by the user from the contacts UI.
+ */
+export function seedDemoContact(uid: string): void {
+  const name = process.env.DEMO_CONTACT_NAME?.trim();
+  const phone = process.env.DEMO_CONTACT_PHONE?.trim();
+  if (!name || !phone) return;
+
+  if (!savedContactStore.has(uid)) {
+    savedContactStore.set(uid, new Map());
+  }
+  const meta = savedContactsMeta.get(uid) ?? {};
+  if (meta.demoSeeded) return;
+
+  const digits = phone.replace(/[^0-9]/g, '');
+  if (digits.length < 7) {
+    logger.warn({ uid, phone }, 'DEMO_CONTACT_PHONE invalid — skipping demo contact seed');
+    return;
+  }
+
+  const jid = `${digits}@s.whatsapp.net`;
+  const store = savedContactStore.get(uid)!;
+  const now = new Date().toISOString();
+
+  // Don't overwrite an existing entry (e.g. user already saved this number themselves)
+  if (!store.has(jid)) {
+    store.set(jid, {
+      id: jid,
+      name,
+      source: 'demo',
+      addedAt: now,
+    });
+  }
+
+  meta.demoSeeded = true;
+  savedContactsMeta.set(uid, meta);
+  persistSavedContacts(uid);
+
+  logger.info({ uid, name, jid }, 'Seeded demo contact');
 }
 
 /** Delete a saved contact by JID. Returns true if the contact existed. */

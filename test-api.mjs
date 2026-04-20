@@ -279,8 +279,27 @@ await run('20. Contacts — list includes source field', async () => {
   const { json } = await request('GET', `/contacts?uid=${UID}`);
   if (json.contacts.length > 0) {
     const sources = json.contacts.map(c => c.source);
-    assert(sources.every(s => s === 'manual' || s === 'import'), `Unexpected source values: ${sources}`);
+    const valid = new Set(['manual', 'import', 'demo']);
+    assert(sources.every(s => valid.has(s)), `Unexpected source values: ${sources}`);
     console.log(`     → ${json.contacts.length} contacts, sources: ${[...new Set(sources)].join(', ')}`);
+  }
+});
+
+await run('20b. Contacts — demo contact seeded (if DEMO_CONTACT_NAME set)', async () => {
+  const demoName = process.env.DEMO_CONTACT_NAME?.trim();
+  if (!demoName) {
+    console.log('     → SKIPPED (DEMO_CONTACT_NAME not set)');
+    return;
+  }
+  const { json } = await request('GET', `/contacts?uid=${UID}`);
+  const demo = json.contacts.find(c => c.source === 'demo');
+  // Demo contact may have been deleted by a previous test run — only assert
+  // the shape if it's present, since seeding is one-shot per uid.
+  if (demo) {
+    assert(demo.name === demoName, `Expected demo name "${demoName}", got "${demo.name}"`);
+    console.log(`     → demo contact present: ${demo.name} (${demo.phone})`);
+  } else {
+    console.log('     → demo contact not present (already deleted on this uid)');
   }
 });
 

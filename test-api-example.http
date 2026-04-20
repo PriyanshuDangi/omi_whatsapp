@@ -8,6 +8,9 @@
 @contactName = John
 @groupName = Family Group
 @secret = your-omi-app-secret-here
+# Demo contact name configured via DEMO_CONTACT_NAME on the server (auto-seeded
+# into every new uid so anyone can test without saving a contact first).
+@demoContact = Priyanshu Dangi
 
 ### ============================================================
 ### 1. Health Check
@@ -117,6 +120,21 @@ Content-Type: application/json
   "uid": "{{uid}}",
   "contact_name": "{{contactName}}",
   "message": "Hey! This is a test message sent from the Omi WhatsApp integration."
+}
+
+### ============================================================
+### 7c. Chat Tool — Send to the Demo Contact
+### ============================================================
+### Lets anyone try the app without first saving a contact —
+### the demo contact is seeded automatically when WhatsApp is linked.
+
+POST {{host}}/tools/send_message?uid={{uid}}
+Content-Type: application/json
+
+{
+  "uid": "{{uid}}",
+  "contact_name": "{{demoContact}}",
+  "message": "Hello from the Omi WhatsApp demo!"
 }
 
 ### ============================================================
