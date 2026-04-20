@@ -2,6 +2,16 @@
   "name": "omi-whatsapp",
   "version": "1.0.0",
   "description": "Omi integration app — WhatsApp meeting recaps and voice-triggered messaging",
+  "license": "MIT",
+  "author": "Priyanshu Dangi <priyanshudangipd@gmail.com>",
+  "homepage": "https://github.com/PriyanshuDangi/omi_whatsapp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PriyanshuDangi/omi_whatsapp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PriyanshuDangi/omi_whatsapp/issues"
+  },
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",

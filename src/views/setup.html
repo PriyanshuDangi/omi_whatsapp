@@ -387,6 +387,121 @@
     }
 
     /* ──────────────────────────────────────────────────────────────────
+       Demo / support card — try the app & contact the developer
+       ────────────────────────────────────────────────────────────────── */
+    .demo-card {
+      display: none; /* shown only when /setup/config returns a demo contact */
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(240, 217, 168, 0.25);
+      background:
+        linear-gradient(180deg, rgba(240, 217, 168, 0.06), rgba(240, 217, 168, 0.01)),
+        linear-gradient(180deg, var(--bg-1), var(--bg-0));
+    }
+
+    /* dotted-grid texture so the demo card reads as "different" from green cards */
+    .demo-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(rgba(240, 217, 168, 0.08) 1px, transparent 1px);
+      background-size: 14px 14px;
+      pointer-events: none;
+      opacity: 0.6;
+    }
+
+    .demo-card > * { position: relative; }
+
+    .demo-card .card-title { margin-bottom: 0.65rem; }
+    .demo-card .card-title::before {
+      background: linear-gradient(180deg, var(--cream), #c8a85c);
+    }
+
+    .demo-eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      font-weight: 500;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--cream);
+      margin-bottom: 0.5rem;
+    }
+    .demo-eyebrow::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--cream);
+      box-shadow: 0 0 0 3px rgba(240, 217, 168, 0.18);
+    }
+
+    .demo-lede {
+      font-family: var(--font-display);
+      font-size: 1.15rem;
+      line-height: 1.35;
+      letter-spacing: -0.01em;
+      color: var(--ink-0);
+      margin-bottom: 0.6rem;
+    }
+    .demo-lede em {
+      font-style: italic;
+      color: var(--cream);
+    }
+
+    .demo-sub {
+      color: var(--ink-2);
+      font-size: 0.88rem;
+      line-height: 1.5;
+      margin-bottom: 0.95rem;
+    }
+
+    .demo-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
+      margin-bottom: 0.85rem;
+    }
+
+    .demo-meta {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.35rem 0.65rem;
+      padding-top: 0.85rem;
+      border-top: 1px dashed var(--line-strong);
+      font-size: 0.78rem;
+      color: var(--ink-3);
+      font-family: var(--font-mono);
+    }
+    .demo-meta dt {
+      color: var(--ink-4);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-size: 0.66rem;
+      align-self: center;
+    }
+    .demo-meta dd { color: var(--ink-1); word-break: break-all; }
+    .demo-meta dd a { color: var(--cream); text-decoration: none; border-bottom: 1px dotted rgba(240, 217, 168, 0.4); }
+    .demo-meta dd a:hover { color: var(--ink-0); border-bottom-color: var(--cream); }
+
+    #demo-feedback {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      min-height: 1.1rem;
+      margin-top: 0.1rem;
+    }
+
+    /* Cream-accented variant of btn-primary for the demo CTA */
+    .btn-cream {
+      background: var(--cream);
+      color: #2a2104;
+      border-color: var(--cream);
+    }
+    .btn-cream:hover:not(:disabled) { background: #f6e2b9; border-color: #f6e2b9; }
+
+    /* ──────────────────────────────────────────────────────────────────
        Features deck — the core "what can I do" content
        ────────────────────────────────────────────────────────────────── */
     .feature {
@@ -841,6 +956,39 @@
           <h2>WhatsApp connected</h2>
           <p>You can close this page &mdash; or stay to explore what you can do now.</p>
         </div>
+      </div>
+
+      <!-- Demo / support card. Hidden until /setup/config returns a demo contact. -->
+      <div class="card demo-card" id="demo-card">
+        <span class="demo-eyebrow">Try it now</span>
+        <div class="card-title">Send a hello to <span id="demo-name">the demo contact</span></div>
+        <p class="demo-lede">
+          We've pre-saved a demo contact for you. Tap once to send a quick
+          <em>"hi"</em> on WhatsApp and see Omi in action.
+        </p>
+        <p class="demo-sub">
+          Or try it by voice on Omi:
+          <strong>"Send a WhatsApp to <span class="demo-name-inline">the demo contact</span>: hi from Omi"</strong>
+        </p>
+
+        <div class="demo-actions">
+          <button class="btn btn-cream" id="demo-send-btn" type="button">
+            Send "hi" to <span class="demo-name-inline">the demo contact</span>
+          </button>
+          <div id="demo-feedback" role="status" aria-live="polite"></div>
+        </div>
+
+        <dl class="demo-meta">
+          <dt>Need help?</dt>
+          <dd>
+            That contact is the developer. Hit a bug or have feedback?
+            <a id="demo-wa-link" href="#" target="_blank" rel="noopener noreferrer">
+              Message on WhatsApp
+            </a>
+          </dd>
+          <dt>Number</dt>
+          <dd id="demo-phone">&mdash;</dd>
+        </dl>
       </div>
 
       <!-- Feature deck -->
