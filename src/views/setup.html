@@ -32,6 +32,21 @@
       -webkit-text-fill-color: transparent;
     }
 
+    .beta {
+      display: inline-block;
+      margin-left: 0.5rem;
+      padding: 0.15rem 0.5rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #25d366;
+      border: 1px solid #25d366;
+      border-radius: 4px;
+      vertical-align: middle;
+      -webkit-text-fill-color: #25d366;
+    }
+
     .subtitle {
       color: #888;
       font-size: 0.95rem;
@@ -288,11 +303,35 @@
       min-height: 1.2rem;
       margin-top: 0.5rem;
     }
+
+    /* Footer with non-affiliation notice + legal links */
+    .legal-footer {
+      margin-top: 2.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid #1a1a2e;
+      text-align: center;
+      font-size: 0.75rem;
+      line-height: 1.5;
+      color: #666;
+    }
+
+    .legal-footer p { margin-bottom: 0.5rem; }
+
+    .legal-footer .links a {
+      color: #888;
+      text-decoration: none;
+      margin: 0 0.5rem;
+    }
+
+    .legal-footer .links a:hover {
+      color: #25d366;
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="logo">Omi + WhatsApp</div>
+    <div class="logo">Omi + WhatsApp<span class="beta">Beta</span></div>
     <p class="subtitle">Connect your WhatsApp to receive meeting recaps</p>
 
     <!-- QR code view -->
@@ -358,6 +397,18 @@
       <p id="disconnected-msg">Your WhatsApp session has ended.<br />Please relink to continue receiving recaps.</p>
       <button class="btn btn-primary" id="reconnect-btn">Reconnect WhatsApp</button>
     </div>
+
+    <footer class="legal-footer">
+      <p>
+        Independent side project &mdash; not affiliated with, endorsed by, or associated with
+        WhatsApp LLC or Meta Platforms, Inc.
+      </p>
+      <p class="links">
+        <a href="/legal/privacy" target="_blank" rel="noopener">Privacy</a>&middot;
+        <a href="/legal/terms" target="_blank" rel="noopener">Terms</a>&middot;
+        <a href="/legal/disclaimer" target="_blank" rel="noopener">Disclaimer</a>
+      </p>
+    </footer>
   </div>
 
   <script>

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Omi + WhatsApp</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #e8e8e8;
+      line-height: 1.65;
+      padding: 2.5rem 1.25rem 4rem;
+    }
+
+    .wrap { max-width: 760px; margin: 0 auto; }
+
+    .brand {
+      display: inline-block;
+      font-size: 1.1rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #25d366, #128c7e);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 0.25rem;
+    }
+
+    .beta {
+      display: inline-block;
+      margin-left: 0.5rem;
+      padding: 0.1rem 0.45rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: #25d366;
+      border: 1px solid #25d366;
+      border-radius: 4px;
+      vertical-align: middle;
+    }
+
+    h1 {
+      font-size: 1.9rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+      color: #fff;
+    }
+
+    .meta {
+      color: #888;
+      font-size: 0.85rem;
+      margin-bottom: 2.5rem;
+    }
+
+    h2 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: #fff;
+      margin-top: 2.25rem;
+      margin-bottom: 0.75rem;
+    }
+
+    p { margin-bottom: 1rem; color: #cfcfcf; }
+
+    ul { padding-left: 1.4rem; margin-bottom: 1rem; color: #cfcfcf; }
+    li { margin-bottom: 0.4rem; }
+
+    a { color: #25d366; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.85em;
+      background: #1a1a2e;
+      padding: 0.1rem 0.35rem;
+      border-radius: 4px;
+      color: #e8e8e8;
+    }
+
+    .callout {
+      border-left: 3px solid #25d366;
+      background: rgba(37, 211, 102, 0.06);
+      padding: 0.9rem 1rem;
+      border-radius: 0 6px 6px 0;
+      margin: 1rem 0 1.5rem;
+      color: #d8d8d8;
+      font-size: 0.95rem;
+    }
+
+    .nav {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid #1a1a2e;
+      font-size: 0.85rem;
+      color: #888;
+    }
+
+    .nav a { margin-right: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">Omi + WhatsApp <span class="beta">Beta</span></div>
+    <h1>Privacy Policy</h1>
+    <div class="meta">Last updated: 21 April 2026</div>
+
+    <div class="callout">
+      <strong>The short version.</strong> This is a personal side project, not a company. We
+      store the minimum needed to keep your WhatsApp linked to Omi: your WhatsApp session keys,
+      your contacts, and your Omi user ID. Nothing is sold, shared, or sent to third parties.
+      You can wipe your data any time by tapping <em>Logout WhatsApp</em> on the setup page.
+    </div>
+
+    <h2>1. Who we are</h2>
+    <p>
+      Omi + WhatsApp ("the App", "we", "us") is an independent, non-commercial side project that
+      lets users connect WhatsApp to <a href="https://www.omi.me" target="_blank" rel="noopener noreferrer">Omi</a>
+      to receive meeting recaps and send messages by voice. We are not a registered company.
+      The project is operated by an individual based in Sehore, Madhya Pradesh, India.
+    </p>
+    <p>
+      You can reach us at
+      <a href="mailto:priyanshudangipd@gmail.com">priyanshudangipd@gmail.com</a>
+      for any privacy question or data request.
+    </p>
+
+    <h2>2. What we collect</h2>
+    <p>To make the App work, we store the following on the server we operate:</p>
+    <ul>
+      <li>
+        <strong>WhatsApp session credentials</strong> — the encryption keys generated when you
+        scan the QR code. These are equivalent to a WhatsApp Web session and let our server send
+        and receive messages on your behalf. Stored on disk under <code>sessions/&lt;your-uid&gt;/creds.json</code>.
+      </li>
+      <li>
+        <strong>WhatsApp contact list</strong> — names and phone numbers from your WhatsApp
+        address book, used to fuzzy-match names like "send a message to John" to the right
+        contact. Stored under <code>sessions/&lt;your-uid&gt;/contacts.json</code>.
+      </li>
+      <li>
+        <strong>Manually saved contacts</strong> — any contact you add through the
+        <em>Manage Contacts</em> panel.
+      </li>
+      <li>
+        <strong>Your Omi user ID (<code>uid</code>)</strong> — passed by Omi in every webhook
+        and used to associate requests with your WhatsApp session.
+      </li>
+      <li>
+        <strong>Pending reminders</strong> — if you ask Omi to set a WhatsApp reminder, the
+        text and scheduled time are stored until the reminder fires.
+      </li>
+      <li>
+        <strong>Server logs</strong> — request method, path, status code, response time, and
+        a redacted view of request bodies. Used for debugging. Logs are rotated and old files
+        are deleted periodically.
+      </li>
+    </ul>
+
+    <h2>3. What we do <em>not</em> collect</h2>
+    <ul>
+      <li>No analytics, tracking pixels, advertising IDs, or third-party trackers.</li>
+      <li>No browser cookies on the setup page.</li>
+      <li>No persistent storage of the content of your Omi conversations or memories &mdash;
+        memory webhook payloads are received, formatted into a WhatsApp message, sent, and
+        discarded from memory. (A redacted reference may appear in server logs.)</li>
+      <li>We do not share, sell, rent, or trade any of your data with anyone.</li>
+    </ul>
+
+    <h2>4. Where your data lives</h2>
+    <p>
+      All data is stored on a single server we operate. We do not use any third-party database
+      or analytics service. The server communicates directly with WhatsApp's servers (via the
+      Baileys library) and with Omi's webhook endpoints. No other parties receive your data.
+    </p>
+
+    <h2>5. How long we keep it</h2>
+    <ul>
+      <li>WhatsApp session and contacts: kept until you log out, or until you ask us to delete them.</li>
+      <li>Pending reminders: deleted immediately after the reminder is sent.</li>
+      <li>Server logs: retained for a short window for debugging, then deleted.</li>
+    </ul>
+
+    <h2>6. Your rights</h2>
+    <p>You can, at any time:</p>
+    <ul>
+      <li><strong>Delete your data yourself</strong> — open the setup page and tap
+        <em>Logout WhatsApp</em>. This removes your session credentials and contact files
+        from the server immediately.</li>
+      <li><strong>Request a copy</strong> of any data we hold about you by emailing
+        <a href="mailto:priyanshudangipd@gmail.com">priyanshudangipd@gmail.com</a>.</li>
+      <li><strong>Request full deletion</strong> by emailing the same address. We will
+        confirm within a reasonable time.</li>
+    </ul>
+
+    <h2>7. Security</h2>
+    <p>
+      The server runs behind a reverse proxy with HTTPS. WhatsApp session files are stored
+      with restricted filesystem permissions. That said, this is a hobby project run by one
+      person — we make no guarantees about security and recommend you avoid using the App
+      with a WhatsApp account that holds highly sensitive conversations.
+    </p>
+
+    <h2>8. Children</h2>
+    <p>
+      The App is not intended for users under 13. If you believe a child has used the App,
+      please contact us and we will delete their data.
+    </p>
+
+    <h2>9. Changes to this policy</h2>
+    <p>
+      We may update this policy from time to time. The "Last updated" date at the top will
+      change when we do. Material changes will be highlighted on the setup page.
+    </p>
+
+    <h2>10. Contact</h2>
+    <p>
+      Questions, requests, or concerns:
+      <a href="mailto:priyanshudangipd@gmail.com">priyanshudangipd@gmail.com</a>.
+    </p>
+
+    <div class="nav">
+      <a href="/legal/terms">Terms of Service</a>
+      <a href="/legal/disclaimer">Disclaimer</a>
+    </div>
+  </div>
+</body>
+</html>

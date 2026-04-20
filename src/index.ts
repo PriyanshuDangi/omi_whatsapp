@@ -13,6 +13,7 @@ import { setupRouter } from './routes/setup.js';
 import { webhookRouter } from './routes/webhook.js';
 import { manifestRouter, toolsRouter } from './routes/chat-tools.js';
 import { contactsRouter } from './routes/contacts.js';
+import { legalRouter } from './routes/legal.js';
 import { initSession } from './services/whatsapp.js';
 import { startReminderTick } from './services/reminder.js';
 import { sanitizeUid } from './utils/sanitize.js';
@@ -160,6 +161,7 @@ app.use('/tools', toolsRouter);
 app.use('/setup/tools', toolsRouter); // Omi resolves relative to App Home URL (/setup)
 app.use('/contacts', contactsRouter);
 app.use('/setup/contacts', contactsRouter);
+app.use('/legal', legalRouter);
 
 // ---------------------------------------------------------------------------
 // Auto-restore existing WhatsApp sessions from filesystem on startup
