@@ -110,7 +110,8 @@
       <strong>The short version.</strong> This is a personal side project, not a company. We
       store the minimum needed to keep your WhatsApp linked to Omi: your WhatsApp session keys,
       your contacts, and your Omi user ID. Nothing is sold, shared, or sent to third parties.
-      You can wipe your data any time by tapping <em>Logout WhatsApp</em> on the setup page.
+      You can disconnect any time by tapping <em>Logout WhatsApp</em>, and email us if you
+      want every trace of your data removed.
     </div>
 
     <h2>1. Who we are</h2>
@@ -119,6 +120,11 @@
       lets users connect WhatsApp to <a href="https://www.omi.me" target="_blank" rel="noopener noreferrer">Omi</a>
       to receive meeting recaps and send messages by voice. We are not a registered company.
       The project is operated by an individual based in Sehore, Madhya Pradesh, India.
+    </p>
+    <p>
+      The full source code of the App is open and publicly available at
+      <a href="https://github.com/PriyanshuDangi/omi_whatsapp" target="_blank" rel="noopener noreferrer">github.com/PriyanshuDangi/omi_whatsapp</a>.
+      Anything stated in this policy can be verified directly against the code.
     </p>
     <p>
       You can reach us at
@@ -177,21 +183,37 @@
 
     <h2>5. How long we keep it</h2>
     <ul>
-      <li>WhatsApp session and contacts: kept until you log out, or until you ask us to delete them.</li>
-      <li>Pending reminders: deleted immediately after the reminder is sent.</li>
-      <li>Server logs: retained for a short window for debugging, then deleted.</li>
+      <li><strong>Active WhatsApp session</strong> (the keys that let us send messages on your
+        behalf): removed immediately when you tap <em>Logout WhatsApp</em>, or when WhatsApp
+        revokes the link from your phone.</li>
+      <li><strong>Backups of your contact list, group list, and the phone number tied to your
+        WhatsApp account</strong>: a snapshot is kept on the server for operational and
+        debugging purposes after logout. These are not used for any other purpose and are
+        never shared. Email us to have them deleted permanently.</li>
+      <li><strong>Manually saved contacts</strong> (added via the <em>Manage Contacts</em>
+        panel): preserved across logouts so you don't have to re-enter them next time you
+        link. Email us to delete them.</li>
+      <li><strong>Pending reminders</strong>: stored until the reminder fires, then deleted.
+        Logging out does not cancel scheduled reminders &mdash; email us if you want them
+        cleared.</li>
+      <li><strong>Server logs</strong> (request method, path, status, your Omi <code>uid</code>,
+        and a redacted request body): retained for a short window for debugging, then deleted
+        by log rotation.</li>
     </ul>
 
     <h2>6. Your rights</h2>
     <p>You can, at any time:</p>
     <ul>
-      <li><strong>Delete your data yourself</strong> — open the setup page and tap
-        <em>Logout WhatsApp</em>. This removes your session credentials and contact files
-        from the server immediately.</li>
-      <li><strong>Request a copy</strong> of any data we hold about you by emailing
-        <a href="mailto:priyanshudangipd@gmail.com">priyanshudangipd@gmail.com</a>.</li>
-      <li><strong>Request full deletion</strong> by emailing the same address. We will
-        confirm within a reasonable time.</li>
+      <li><strong>Disconnect WhatsApp yourself</strong> &mdash; open the setup page and tap
+        <em>Logout WhatsApp</em>. This severs the WhatsApp Web link and removes your active
+        session keys from the server immediately, so we can no longer send or receive
+        messages on your behalf.</li>
+      <li><strong>Request full deletion</strong> of everything tied to your account
+        &mdash; including contact backups, saved contacts, pending reminders, and any logs
+        containing your <code>uid</code> &mdash; by emailing
+        <a href="mailto:priyanshudangipd@gmail.com">priyanshudangipd@gmail.com</a>.
+        We will confirm within a reasonable time.</li>
+      <li><strong>Request a copy</strong> of any data we hold about you at the same email.</li>
     </ul>
 
     <h2>7. Security</h2>

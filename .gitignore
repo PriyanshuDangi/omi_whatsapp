@@ -11,3 +11,4 @@ test-api.http
 debug
 /sessions-archive
 scripts
+.playwright-mcp
