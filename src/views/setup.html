@@ -2,414 +2,1067 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0a" />
+  <meta name="description" content="Connect Omi to WhatsApp — automatic meeting recaps, hands-free messaging, and voice-set reminders." />
   <title>Connect WhatsApp — Omi</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
+
   <style>
+    /* ──────────────────────────────────────────────────────────────────
+       Design tokens
+       ────────────────────────────────────────────────────────────────── */
+    :root {
+      --bg-0: #0a0a0a;
+      --bg-1: #111114;
+      --bg-2: #16161b;
+      --bg-3: #1d1d23;
+      --line: #24242c;
+      --line-strong: #2f2f38;
+
+      --ink-0: #fafafa;
+      --ink-1: #d4d4d8;
+      --ink-2: #a1a1aa;
+      --ink-3: #71717a;
+      --ink-4: #52525b;
+
+      --wa: #25d366;
+      --wa-deep: #128c7e;
+      --wa-soft: rgba(37, 211, 102, 0.12);
+      --wa-line: rgba(37, 211, 102, 0.28);
+
+      --cream: #f0d9a8;          /* warm secondary accent (Omi side) */
+      --cream-soft: rgba(240, 217, 168, 0.1);
+
+      --danger: #f87171;
+      --danger-soft: rgba(248, 113, 113, 0.12);
+
+      --radius-sm: 8px;
+      --radius: 14px;
+      --radius-lg: 20px;
+
+      --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 40px -20px rgba(0, 0, 0, 0.8);
+      --shadow-glow: 0 0 0 1px var(--wa-line), 0 8px 32px -8px rgba(37, 211, 102, 0.25);
+
+      --font-display: 'Fraunces', Georgia, serif;
+      --font-body: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
+    html { -webkit-text-size-adjust: 100%; }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #0a0a0a;
-      color: #f5f5f5;
+      font-family: var(--font-body);
+      background: var(--bg-0);
+      color: var(--ink-1);
       min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      min-height: 100svh;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      line-height: 1.5;
+      padding:
+        max(env(safe-area-inset-top), 1.25rem)
+        max(env(safe-area-inset-right), 1.25rem)
+        max(env(safe-area-inset-bottom), 2.5rem)
+        max(env(safe-area-inset-left), 1.25rem);
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Soft conic halo behind the hero */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -30vh;
+      left: 50%;
+      width: 90vw;
+      max-width: 720px;
+      aspect-ratio: 1;
+      transform: translateX(-50%);
+      background:
+        radial-gradient(circle at 50% 50%, rgba(37, 211, 102, 0.18), transparent 55%),
+        radial-gradient(circle at 30% 70%, rgba(240, 217, 168, 0.06), transparent 60%);
+      filter: blur(60px);
+      z-index: -2;
+      pointer-events: none;
+    }
+
+    /* Subtle film grain via SVG noise */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.04 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+      opacity: 0.6;
+      mix-blend-mode: overlay;
+      z-index: -1;
+      pointer-events: none;
     }
 
     .container {
-      text-align: center;
-      max-width: 420px;
-      padding: 2rem;
+      max-width: 540px;
+      margin: 0 auto;
     }
 
-    .logo {
-      font-size: 2rem;
-      font-weight: 700;
-      margin-bottom: 0.5rem;
-      background: linear-gradient(135deg, #25d366, #128c7e);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
+    /* ──────────────────────────────────────────────────────────────────
+       Hero
+       ────────────────────────────────────────────────────────────────── */
+    .hero {
+      text-align: center;
+      padding: 1.25rem 0 1.75rem;
+      animation: rise 0.7s var(--ease) both;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-family: var(--font-display);
+      font-size: clamp(1.75rem, 6vw, 2.25rem);
+      font-weight: 500;
+      letter-spacing: -0.02em;
+      line-height: 1.05;
+      color: var(--ink-0);
+    }
+
+    .brand .amp {
+      font-style: italic;
+      color: var(--wa);
+      padding: 0 0.05em;
     }
 
     .beta {
       display: inline-block;
-      margin-left: 0.5rem;
-      padding: 0.15rem 0.5rem;
-      font-size: 0.7rem;
-      font-weight: 600;
-      letter-spacing: 0.06em;
+      margin-left: 0.4rem;
+      padding: 0.18rem 0.55rem;
+      font-family: var(--font-mono);
+      font-size: 0.62rem;
+      font-weight: 500;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
-      color: #25d366;
-      border: 1px solid #25d366;
-      border-radius: 4px;
+      color: var(--wa);
+      border: 1px solid var(--wa-line);
+      background: var(--wa-soft);
+      border-radius: 999px;
       vertical-align: middle;
-      -webkit-text-fill-color: #25d366;
     }
 
-    .subtitle {
-      color: #888;
+    .tagline {
+      margin-top: 0.65rem;
+      color: var(--ink-2);
       font-size: 0.95rem;
-      margin-bottom: 2rem;
+      font-weight: 400;
+      max-width: 38ch;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .tagline em {
+      font-family: var(--font-display);
+      font-style: italic;
+      color: var(--cream);
+      font-weight: 500;
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Cards (shared)
+       ────────────────────────────────────────────────────────────────── */
+    .card {
+      background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      box-shadow: var(--shadow-card);
+    }
+
+    .card + .card { margin-top: 1rem; }
+
+    .card-title {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      font-weight: 500;
+      color: var(--ink-0);
+      letter-spacing: -0.01em;
+      margin-bottom: 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+    }
+
+    .card-title::before {
+      content: '';
+      width: 4px;
+      height: 16px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, var(--wa), var(--wa-deep));
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       QR section
+       ────────────────────────────────────────────────────────────────── */
+    .qr-card {
+      text-align: center;
+      padding: 1.5rem 1.25rem 1.25rem;
     }
 
     #qr-container {
       background: #fff;
-      border-radius: 16px;
-      padding: 1.5rem;
-      display: inline-block;
-      margin-bottom: 1.5rem;
-      min-width: 280px;
-      min-height: 280px;
-      display: flex;
+      border-radius: var(--radius);
+      padding: 1rem;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
+      width: 280px;
+      height: 280px;
+      max-width: 100%;
+      margin: 0 auto 1.25rem;
+      box-shadow: var(--shadow-glow);
+      position: relative;
+    }
+
+    #qr-container::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: var(--radius);
+      padding: 1px;
+      background: linear-gradient(135deg, var(--wa), transparent 40%, var(--cream-soft));
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+              mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+              mask-composite: exclude;
+      pointer-events: none;
     }
 
     #qr-container img {
-      width: 260px;
-      height: 260px;
+      width: 100%;
+      height: 100%;
+      max-width: 256px;
+      max-height: 256px;
       display: block;
     }
 
     .spinner {
       width: 40px;
       height: 40px;
-      border: 3px solid #e0e0e0;
-      border-top-color: #25d366;
+      border: 3px solid #ececec;
+      border-top-color: var(--wa);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 0 var(--wa-soft); }
+      50%      { box-shadow: 0 0 0 6px transparent; }
     }
 
-    .instructions {
-      color: #aaa;
-      font-size: 0.9rem;
-      line-height: 1.6;
-      margin-bottom: 1rem;
-    }
-
-    .instructions ol {
+    /* Numbered steps */
+    .steps {
+      list-style: none;
+      counter-reset: step;
       text-align: left;
-      display: inline-block;
+      max-width: 320px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
     }
 
-    .instructions li {
-      margin-bottom: 0.3rem;
+    .steps li {
+      counter-increment: step;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.7rem;
+      color: var(--ink-2);
+      font-size: 0.92rem;
+      line-height: 1.45;
     }
 
+    .steps li > span { flex: 1; min-width: 0; }
+
+    .steps li::before {
+      content: counter(step);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: var(--wa);
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      background: var(--wa-soft);
+      border: 1px solid var(--wa-line);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 1px;
+    }
+
+    .steps strong { color: var(--ink-0); font-weight: 600; }
+
+    #status {
+      margin-top: 1rem;
+      color: var(--ink-3);
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      letter-spacing: 0.02em;
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Success / disconnected views
+       ────────────────────────────────────────────────────────────────── */
     .success {
       display: none;
       flex-direction: column;
-      align-items: center;
+      align-items: stretch;
       gap: 1rem;
+      animation: rise 0.6s var(--ease) both;
     }
 
-    .success .checkmark {
-      width: 80px;
-      height: 80px;
+    .status-banner {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      padding: 1rem 1.1rem;
+      background: linear-gradient(180deg, rgba(37, 211, 102, 0.1), rgba(37, 211, 102, 0.02));
+      border: 1px solid var(--wa-line);
+      border-radius: var(--radius);
+    }
+
+    .status-banner.is-danger {
+      background: linear-gradient(180deg, rgba(248, 113, 113, 0.1), rgba(248, 113, 113, 0.02));
+      border-color: rgba(248, 113, 113, 0.3);
+    }
+
+    .checkmark {
+      width: 44px;
+      height: 44px;
+      flex-shrink: 0;
       border-radius: 50%;
-      background: #25d366;
+      background: var(--wa);
+      color: #06160c;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 2.5rem;
-    }
-
-    .success h2 {
-      color: #25d366;
       font-size: 1.4rem;
+      font-weight: 700;
+      animation: pulse 2.4s ease-in-out infinite;
     }
 
-    .success p {
-      color: #888;
-      font-size: 0.95rem;
+    .status-banner.is-danger .checkmark {
+      background: var(--danger);
+      color: #2a0d0d;
+      animation: none;
     }
 
-    #status {
-      color: #888;
-      font-size: 0.85rem;
-      margin-top: 0.5rem;
+    .status-text h2 {
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+      font-weight: 500;
+      color: var(--ink-0);
+      letter-spacing: -0.01em;
+      line-height: 1.2;
+      margin-bottom: 0.15rem;
     }
 
-    .btn {
-      display: inline-block;
-      padding: 0.6rem 1.5rem;
-      border: none;
+    .status-text p {
+      color: var(--ink-2);
+      font-size: 0.88rem;
+      line-height: 1.4;
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Features deck — the core "what can I do" content
+       ────────────────────────────────────────────────────────────────── */
+    .feature {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+      overflow: hidden;
+      transition: border-color 0.2s var(--ease);
+    }
+
+    .feature + .feature { margin-top: 0.65rem; }
+
+    .feature[open] {
+      border-color: var(--wa-line);
+    }
+
+    .feature summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 0.95rem 1.1rem;
+      display: grid;
+      grid-template-columns: 32px 1fr auto;
+      align-items: center;
+      gap: 0.85rem;
+      min-height: 56px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .feature summary::-webkit-details-marker { display: none; }
+
+    .feature .icon {
+      width: 32px;
+      height: 32px;
       border-radius: 8px;
+      background: var(--wa-soft);
+      border: 1px solid var(--wa-line);
+      color: var(--wa);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+    }
+
+    .feature .feature-meta {
+      min-width: 0;
+    }
+
+    .feature .feature-name {
+      color: var(--ink-0);
       font-size: 0.95rem;
       font-weight: 600;
+      letter-spacing: -0.005em;
+      line-height: 1.25;
+    }
+
+    .feature .feature-tag {
+      display: inline-block;
+      margin-top: 0.2rem;
+      padding: 0.1rem 0.45rem;
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+    }
+
+    .feature .feature-tag.is-auto {
+      color: var(--cream);
+      border-color: rgba(240, 217, 168, 0.3);
+      background: var(--cream-soft);
+    }
+    .feature .feature-tag.is-voice {
+      color: var(--wa);
+      border-color: var(--wa-line);
+      background: var(--wa-soft);
+    }
+
+    .feature .chev {
+      color: var(--ink-3);
+      font-size: 1.1rem;
+      transition: transform 0.25s var(--ease);
+    }
+    .feature[open] .chev { transform: rotate(90deg); color: var(--wa); }
+
+    .feature-body {
+      padding: 0 1.1rem 1.1rem;
+      border-top: 1px solid var(--line);
+      padding-top: 0.85rem;
+    }
+
+    .feature-body p {
+      color: var(--ink-1);
+      font-size: 0.9rem;
+      line-height: 1.55;
+      margin-bottom: 0.75rem;
+    }
+
+    .examples {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .examples-label {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 0.1rem;
+    }
+
+    .quote {
+      display: flex;
+      gap: 0.55rem;
+      align-items: flex-start;
+      padding: 0.65rem 0.8rem;
+      background: var(--bg-2);
+      border: 1px solid var(--line);
+      border-left: 2px solid var(--wa);
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      line-height: 1.5;
+      color: var(--ink-1);
+    }
+
+    .quote::before {
+      content: '"';
+      font-family: var(--font-display);
+      font-style: italic;
+      color: var(--wa);
+      font-size: 1.1rem;
+      line-height: 1;
+      margin-top: -0.05rem;
+      flex-shrink: 0;
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Buttons
+       ────────────────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      min-height: 44px;
+      padding: 0.7rem 1.1rem;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      font-family: var(--font-body);
+      font-size: 0.92rem;
+      font-weight: 600;
+      letter-spacing: -0.005em;
       cursor: pointer;
-      margin-top: 1rem;
-      transition: opacity 0.2s;
+      transition: transform 0.12s var(--ease), opacity 0.2s, background 0.2s, border-color 0.2s;
+      -webkit-tap-highlight-color: transparent;
+      text-decoration: none;
     }
 
-    .btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .btn-danger {
-      background: #e74c3c;
-      color: #fff;
-    }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .btn-primary {
-      background: #25d366;
-      color: #fff;
+      background: var(--wa);
+      color: #06160c;
+      border-color: var(--wa);
     }
+    .btn-primary:hover:not(:disabled) { background: #2bdc6f; }
 
     .btn-secondary {
-      background: #1a1a2e;
-      color: #f5f5f5;
-      border: 1px solid #333;
+      background: var(--bg-2);
+      color: var(--ink-0);
+      border-color: var(--line-strong);
+    }
+    .btn-secondary:hover:not(:disabled) { border-color: var(--wa-line); color: var(--wa); }
+
+    .btn-danger {
+      background: transparent;
+      color: var(--danger);
+      border-color: rgba(248, 113, 113, 0.3);
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: var(--danger-soft);
+      border-color: rgba(248, 113, 113, 0.5);
     }
 
     .btn-row {
       display: flex;
-      gap: 0.75rem;
-      justify-content: center;
+      gap: 0.6rem;
       flex-wrap: wrap;
     }
+    .btn-row .btn { flex: 1 1 auto; min-width: 0; }
 
-    /* Contacts panel */
+    /* ──────────────────────────────────────────────────────────────────
+       Tools panel (contacts + resync)
+       ────────────────────────────────────────────────────────────────── */
     .contacts-panel {
       display: none;
-      margin-top: 1.5rem;
-      text-align: left;
-      width: 100%;
+      margin-top: 0.85rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--line);
     }
 
-    .contacts-panel h3 {
-      font-size: 1.1rem;
-      margin-bottom: 1rem;
-      text-align: center;
-      color: #ccc;
+    .panel-section + .panel-section {
+      margin-top: 1.25rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--line);
+    }
+
+    .panel-section h4 {
+      font-family: var(--font-display);
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: var(--ink-0);
+      letter-spacing: -0.005em;
+      margin-bottom: 0.25rem;
+    }
+
+    .panel-section .hint {
+      font-size: 0.78rem;
+      color: var(--ink-3);
+      line-height: 1.45;
+      margin-bottom: 0.85rem;
     }
 
     .contact-form {
       display: flex;
       flex-direction: column;
-      gap: 0.6rem;
-      margin-bottom: 1.25rem;
+      gap: 0.5rem;
     }
 
     .contact-form input {
-      padding: 0.6rem 0.8rem;
-      border-radius: 8px;
-      border: 1px solid #333;
-      background: #1a1a2e;
-      color: #f5f5f5;
-      font-size: 0.9rem;
+      width: 100%;
+      padding: 0.75rem 0.85rem;
+      border-radius: 10px;
+      border: 1px solid var(--line-strong);
+      background: var(--bg-2);
+      color: var(--ink-0);
+      font-family: var(--font-body);
+      font-size: 16px; /* prevents iOS zoom on focus */
       outline: none;
-      transition: border-color 0.2s;
+      transition: border-color 0.2s, background 0.2s;
+      -webkit-appearance: none;
+              appearance: none;
     }
 
     .contact-form input:focus {
-      border-color: #25d366;
+      border-color: var(--wa);
+      background: var(--bg-3);
     }
 
-    .contact-form input::placeholder {
-      color: #666;
-    }
+    .contact-form input::placeholder { color: var(--ink-4); }
 
     .form-row {
       display: flex;
       gap: 0.5rem;
     }
-
-    .form-row input { flex: 1; }
-
-    #add-contact-btn {
-      align-self: stretch;
-    }
+    .form-row input { flex: 1; min-width: 0; }
 
     #contact-feedback {
-      font-size: 0.85rem;
-      min-height: 1.2rem;
-      text-align: center;
+      font-size: 0.82rem;
+      min-height: 1.1rem;
+      margin-top: 0.25rem;
+      font-family: var(--font-mono);
     }
 
-    .feedback-success { color: #25d366; }
-    .feedback-error { color: #e74c3c; }
+    .feedback-success { color: var(--wa); }
+    .feedback-error   { color: var(--danger); }
 
     .contact-list {
       list-style: none;
-      max-height: 240px;
+      max-height: 280px;
       overflow-y: auto;
+      margin-top: 0.85rem;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--bg-2);
     }
 
     .contact-list li {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 0.5rem 0.6rem;
-      border-bottom: 1px solid #1a1a2e;
+      gap: 0.5rem;
+      padding: 0.7rem 0.85rem;
+      border-bottom: 1px solid var(--line);
       font-size: 0.9rem;
     }
 
     .contact-list li:last-child { border-bottom: none; }
 
-    .contact-info {
-      display: flex;
-      flex-direction: column;
-      gap: 0.15rem;
+    .contact-info { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+    .contact-info .name {
+      color: var(--ink-0);
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
-
-    .contact-info .name { color: #f5f5f5; font-weight: 500; }
-    .contact-info .phone { color: #888; font-size: 0.8rem; }
+    .contact-info .phone {
+      color: var(--ink-3);
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+    }
 
     .contact-list .delete-btn {
-      background: none;
-      border: none;
-      color: #e74c3c;
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--ink-3);
       cursor: pointer;
-      font-size: 0.8rem;
-      padding: 0.3rem 0.5rem;
-      border-radius: 4px;
-      opacity: 0.7;
-      transition: opacity 0.2s;
+      font-size: 0.78rem;
+      padding: 0.45rem 0.7rem;
+      border-radius: 6px;
+      min-height: 36px;
+      transition: color 0.2s, background 0.2s, border-color 0.2s;
+      -webkit-tap-highlight-color: transparent;
     }
-
-    .contact-list .delete-btn:hover { opacity: 1; }
+    .contact-list .delete-btn:hover {
+      color: var(--danger);
+      border-color: rgba(248, 113, 113, 0.3);
+    }
 
     .empty-state {
       text-align: center;
-      color: #666;
+      color: var(--ink-3);
       font-size: 0.85rem;
-      padding: 1rem 0;
-    }
-
-    .resync-section {
-      margin-top: 1.25rem;
-      padding-top: 1.25rem;
-      border-top: 1px solid #1a1a2e;
-      text-align: center;
-    }
-
-    .resync-section p {
-      color: #666;
-      font-size: 0.8rem;
-      margin-bottom: 0.6rem;
-      line-height: 1.4;
+      padding: 1.5rem 0 !important;
+      font-style: italic;
+      font-family: var(--font-display);
     }
 
     #resync-feedback,
     #resync-groups-feedback {
-      font-size: 0.85rem;
-      min-height: 1.2rem;
+      font-size: 0.82rem;
+      min-height: 1.1rem;
       margin-top: 0.5rem;
+      font-family: var(--font-mono);
     }
 
-    /* Footer with non-affiliation notice + legal links */
+    /* ──────────────────────────────────────────────────────────────────
+       Footer
+       ────────────────────────────────────────────────────────────────── */
     .legal-footer {
-      margin-top: 2.5rem;
+      margin-top: 2rem;
       padding-top: 1.25rem;
-      border-top: 1px solid #1a1a2e;
+      border-top: 1px solid var(--line);
       text-align: center;
-      font-size: 0.75rem;
-      line-height: 1.5;
-      color: #666;
+      font-size: 0.74rem;
+      line-height: 1.55;
+      color: var(--ink-4);
     }
 
     .legal-footer p { margin-bottom: 0.5rem; }
 
-    .legal-footer .links a {
-      color: #888;
-      text-decoration: none;
-      margin: 0 0.5rem;
+    .legal-footer .links {
+      display: inline-flex;
+      gap: 0.25rem;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
     }
 
-    .legal-footer .links a:hover {
-      color: #25d366;
-      text-decoration: underline;
+    .legal-footer .links a {
+      color: var(--ink-3);
+      text-decoration: none;
+      padding: 0.35rem 0.65rem;
+      border-radius: 6px;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .legal-footer .links a:hover { color: var(--wa); background: var(--wa-soft); }
+
+    .legal-footer .links .dot {
+      color: var(--ink-4);
+      font-size: 0.6rem;
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Reduced motion
+       ────────────────────────────────────────────────────────────────── */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ──────────────────────────────────────────────────────────────────
+       Larger screens — keep mobile feel but allow some breathing room
+       ────────────────────────────────────────────────────────────────── */
+    @media (min-width: 600px) {
+      body { padding-top: 2.5rem; padding-bottom: 4rem; }
+      .qr-card { padding: 1.75rem 1.5rem 1.5rem; }
+      .card { padding: 1.4rem; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="logo">Omi + WhatsApp<span class="beta">Beta</span></div>
-    <p class="subtitle">Connect your WhatsApp to receive meeting recaps</p>
-
-    <!-- QR code view -->
-    <div id="setup-view">
-      <div id="qr-container">
-        <div class="spinner" id="spinner"></div>
-        <img id="qr-img" src="" alt="QR Code" style="display: none;" />
+  <main class="container">
+    <!-- ─────────── Hero ─────────── -->
+    <header class="hero">
+      <div class="brand">
+        Omi<span class="amp">&amp;</span>WhatsApp
+        <span class="beta">Beta</span>
       </div>
+      <p class="tagline">
+        Every conversation, summarized to your WhatsApp.<br />
+        Then send messages, share notes, or set reminders &mdash; <em>by voice</em>.
+      </p>
+    </header>
 
-      <div class="instructions">
-        <ol>
-          <li>Open WhatsApp on your phone</li>
-          <li>Tap <strong>Menu</strong> or <strong>Settings</strong> → <strong>Linked Devices</strong></li>
-          <li>Tap <strong>Link a Device</strong></li>
-          <li>Scan this QR code</li>
+    <!-- ─────────── QR / linking view ─────────── -->
+    <section id="setup-view">
+      <div class="card qr-card">
+        <div id="qr-container">
+          <div class="spinner" id="spinner"></div>
+          <img id="qr-img" src="" alt="WhatsApp linking QR code" style="display: none;" />
+        </div>
+
+        <ol class="steps">
+          <li><span>Open <strong>WhatsApp</strong> on your phone</span></li>
+          <li><span>Go to <strong>Settings</strong> &rarr; <strong>Linked Devices</strong></span></li>
+          <li><span>Tap <strong>Link a Device</strong></span></li>
+          <li><span>Point the camera at this code</span></li>
         </ol>
-      </div>
-      <div id="status">Generating QR code...</div>
-    </div>
 
-    <!-- Success view -->
-    <div class="success" id="success-view">
-      <div class="checkmark">✓</div>
-      <h2>WhatsApp Connected!</h2>
-      <p>You're all set. Meeting recaps will now be sent to your WhatsApp.<br />You can close this page.</p>
+        <div id="status">Generating QR code&hellip;</div>
+      </div>
+
+      <!-- Lightweight teaser of what comes next -->
+      <div class="card" style="margin-top: 1rem;">
+        <div class="card-title">After you link</div>
+        <div class="examples" style="gap: 0.5rem;">
+          <div class="quote">Recaps of every conversation arrive in your WhatsApp self-chat.</div>
+          <div class="quote">Ask Omi out loud to send messages, share notes, or set reminders.</div>
+          <div class="quote">Save contacts by voice or right here in this page.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────── Success view ─────────── -->
+    <section class="success" id="success-view">
+      <div class="status-banner">
+        <div class="checkmark">&check;</div>
+        <div class="status-text">
+          <h2>WhatsApp connected</h2>
+          <p>You can close this page &mdash; or stay to explore what you can do now.</p>
+        </div>
+      </div>
+
+      <!-- Feature deck -->
+      <div class="card">
+        <div class="card-title">What you can do</div>
+
+        <details class="feature" open>
+          <summary>
+            <span class="icon">&#9881;</span>
+            <span class="feature-meta">
+              <span class="feature-name">Auto meeting recaps</span>
+              <span class="feature-tag is-auto">Automatic</span>
+            </span>
+            <span class="chev">&rsaquo;</span>
+          </summary>
+          <div class="feature-body">
+            <p>
+              Whenever Omi finishes capturing a conversation, you get a clean recap
+              in your WhatsApp self-chat &mdash; title, summary, action items, and category.
+              Nothing to do; it just shows up.
+            </p>
+            <div class="examples">
+              <span class="examples-label">Where it lands</span>
+              <div class="quote">Your &ldquo;Message Yourself&rdquo; chat in WhatsApp</div>
+            </div>
+          </div>
+        </details>
+
+        <details class="feature">
+          <summary>
+            <span class="icon">&#9993;</span>
+            <span class="feature-meta">
+              <span class="feature-name">Send a WhatsApp by voice</span>
+              <span class="feature-tag is-voice">Voice</span>
+            </span>
+            <span class="chev">&rsaquo;</span>
+          </summary>
+          <div class="feature-body">
+            <p>
+              Ask Omi to message any of your contacts or groups. The contact name is
+              fuzzy-matched against your WhatsApp address book.
+            </p>
+            <div class="examples">
+              <span class="examples-label">Try saying</span>
+              <div class="quote">Send a WhatsApp to John saying I&rsquo;ll be 10 minutes late.</div>
+              <div class="quote">Text Mom that I made it home.</div>
+              <div class="quote">Message the Family group: dinner&rsquo;s at 8.</div>
+            </div>
+          </div>
+        </details>
+
+        <details class="feature">
+          <summary>
+            <span class="icon">&#9646;&#9646;</span>
+            <span class="feature-meta">
+              <span class="feature-name">Share a meeting recap</span>
+              <span class="feature-tag is-voice">Voice</span>
+            </span>
+            <span class="chev">&rsaquo;</span>
+          </summary>
+          <div class="feature-body">
+            <p>
+              Forward the latest meeting summary to a teammate, a friend, or a group &mdash;
+              without typing anything.
+            </p>
+            <div class="examples">
+              <span class="examples-label">Try saying</span>
+              <div class="quote">Send today&rsquo;s meeting notes to Sarah on WhatsApp.</div>
+              <div class="quote">Share the recap with the design team group.</div>
+              <div class="quote">Forward the summary to Mom on WhatsApp.</div>
+            </div>
+          </div>
+        </details>
+
+        <details class="feature">
+          <summary>
+            <span class="icon">&#9776;</span>
+            <span class="feature-meta">
+              <span class="feature-name">Send notes to yourself</span>
+              <span class="feature-tag is-voice">Voice</span>
+            </span>
+            <span class="chev">&rsaquo;</span>
+          </summary>
+          <div class="feature-body">
+            <p>
+              Push the meeting notes to your own WhatsApp on demand &mdash; useful when you
+              want a copy in your pocket without waiting for the auto recap.
+            </p>
+            <div class="examples">
+              <span class="examples-label">Try saying</span>
+              <div class="quote">WhatsApp me the meeting summary.</div>
+              <div class="quote">Send me the recap on WhatsApp.</div>
+            </div>
+          </div>
+        </details>
+
+        <details class="feature">
+          <summary>
+            <span class="icon">&#9201;</span>
+            <span class="feature-meta">
+              <span class="feature-name">Set a WhatsApp reminder</span>
+              <span class="feature-tag is-voice">Voice</span>
+            </span>
+            <span class="chev">&rsaquo;</span>
+          </summary>
+          <div class="feature-body">
+            <p>
+              Schedule a future WhatsApp ping to yourself or a contact. Great for
+              follow-ups, recurring nudges, and not forgetting promises.
+            </p>
+            <div class="examples">
+              <span class="examples-label">Try saying</span>
+              <div class="quote">Remind me on WhatsApp to call John at 5 pm.</div>
+              <div class="quote">Ping the team in 2 hours: standup time.</div>
+              <div class="quote">Send Mom a WhatsApp tomorrow at 9 am to say good morning.</div>
+            </div>
+          </div>
+        </details>
+
+        <details class="feature">
+          <summary>
+            <span class="icon">&#43;</span>
+            <span class="feature-meta">
+              <span class="feature-name">Save a contact by voice</span>
+              <span class="feature-tag is-voice">Voice</span>
+            </span>
+            <span class="chev">&rsaquo;</span>
+          </summary>
+          <div class="feature-body">
+            <p>
+              If Omi can&rsquo;t find a name in your address book, save it on the spot. The
+              new contact becomes available to all the tools above instantly.
+            </p>
+            <div class="examples">
+              <span class="examples-label">Try saying</span>
+              <div class="quote">Save contact Priya with number +91 98765 43210.</div>
+              <div class="quote">Save Alex&rsquo;s WhatsApp as +1 415 555 1234.</div>
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Quick actions -->
+      <div class="card">
+        <div class="card-title">Manage</div>
+        <div class="btn-row">
+          <button class="btn btn-secondary" id="manage-contacts-btn">Contacts &amp; sync</button>
+          <button class="btn btn-danger" id="logout-btn">Log out WhatsApp</button>
+        </div>
+
+        <!-- Contacts + resync panel (toggled by button above) -->
+        <div class="contacts-panel" id="contacts-panel">
+          <div class="panel-section">
+            <h4>Saved contacts</h4>
+            <p class="hint">
+              Add anyone Omi might miss when you say their name. Use full international
+              format for the number.
+            </p>
+
+            <div class="contact-form">
+              <div class="form-row">
+                <input type="text" id="contact-name" placeholder="Name (e.g. Mom)" autocomplete="off" />
+                <input type="tel" id="contact-phone" placeholder="+1 415 555 1234" autocomplete="off" inputmode="tel" />
+              </div>
+              <div class="btn-row" style="margin-top: 0.1rem;">
+                <button class="btn btn-primary" id="add-contact-btn">Add contact</button>
+                <button class="btn btn-secondary" id="import-contacts-btn" style="display: none;">Import from phone</button>
+              </div>
+              <div id="contact-feedback"></div>
+            </div>
+
+            <ul class="contact-list" id="contact-list"></ul>
+          </div>
+
+          <div class="panel-section">
+            <h4>Resync from WhatsApp</h4>
+            <p class="hint">
+              Missing a contact name or a recently joined group? Pull a fresh copy of
+              your address book or group list from WhatsApp.
+            </p>
+            <div class="btn-row">
+              <button class="btn btn-secondary" id="resync-contacts-btn">Resync contacts</button>
+              <button class="btn btn-secondary" id="resync-groups-btn">Resync groups</button>
+            </div>
+            <div id="resync-feedback"></div>
+            <div id="resync-groups-feedback"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─────────── Disconnected view ─────────── -->
+    <section class="success" id="disconnected-view">
+      <div class="status-banner is-danger">
+        <div class="checkmark">&excl;</div>
+        <div class="status-text">
+          <h2 id="disconnected-title">Session logged out</h2>
+          <p id="disconnected-msg">Your WhatsApp session has ended. Relink to continue receiving recaps.</p>
+        </div>
+      </div>
       <div class="btn-row">
-        <button class="btn btn-primary" id="manage-contacts-btn">Manage Contacts</button>
-        <button class="btn btn-danger" id="logout-btn">Logout WhatsApp</button>
+        <button class="btn btn-primary" id="reconnect-btn">Reconnect WhatsApp</button>
       </div>
+    </section>
 
-      <!-- Contacts panel (toggled by Manage Contacts button) -->
-      <div class="contacts-panel" id="contacts-panel">
-        <h3>Saved Contacts</h3>
-        <div class="contact-form">
-          <div class="form-row">
-            <input type="text" id="contact-name" placeholder="Name (e.g. Mom)" autocomplete="off" />
-            <input type="tel" id="contact-phone" placeholder="+1 415 555 1234" autocomplete="off" />
-          </div>
-          <div class="btn-row" style="margin-top: 0;">
-            <button class="btn btn-primary" id="add-contact-btn" style="flex: 1;">Add Contact</button>
-            <button class="btn btn-secondary" id="import-contacts-btn" style="flex: 1; display: none;">Import from Phone</button>
-          </div>
-          <div id="contact-feedback"></div>
-        </div>
-        <ul class="contact-list" id="contact-list"></ul>
-
-        <div class="resync-section">
-          <p>Contacts or groups missing? Re-sync from WhatsApp.</p>
-          <div class="btn-row">
-            <button class="btn btn-secondary" id="resync-contacts-btn">Resync Contacts</button>
-            <button class="btn btn-secondary" id="resync-groups-btn">Resync Groups</button>
-          </div>
-          <div id="resync-feedback"></div>
-          <div id="resync-groups-feedback"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Disconnected view (terminal — logged out or server rejected) -->
-    <div class="success" id="disconnected-view">
-      <div class="checkmark" style="background: #e74c3c;">!</div>
-      <h2 id="disconnected-title">Session Logged Out</h2>
-      <p id="disconnected-msg">Your WhatsApp session has ended.<br />Please relink to continue receiving recaps.</p>
-      <button class="btn btn-primary" id="reconnect-btn">Reconnect WhatsApp</button>
-    </div>
-
+    <!-- ─────────── Footer ─────────── -->
     <footer class="legal-footer">
       <p>
-        Independent side project &mdash; not affiliated with, endorsed by, or associated with
-        WhatsApp LLC or Meta Platforms, Inc.
+        Independent side project &mdash; not affiliated with, endorsed by, or associated
+        with WhatsApp LLC or Meta Platforms, Inc.
       </p>
       <p class="links">
-        <a href="/legal/privacy" target="_blank" rel="noopener">Privacy</a>&middot;
-        <a href="/legal/terms" target="_blank" rel="noopener">Terms</a>&middot;
+        <a href="/legal/privacy" target="_blank" rel="noopener">Privacy</a>
+        <span class="dot">&bull;</span>
+        <a href="/legal/terms" target="_blank" rel="noopener">Terms</a>
+        <span class="dot">&bull;</span>
         <a href="/legal/disclaimer" target="_blank" rel="noopener">Disclaimer</a>
+        <span class="dot">&bull;</span>
+        <a href="https://github.com/PriyanshuDangi/omi_whatsapp" target="_blank" rel="noopener">Source</a>
       </p>
     </footer>
-  </div>
+  </main>
 
   <script>
     (function () {
@@ -479,17 +1132,17 @@
         if (TERMINAL_REASONS.indexOf(reason) !== -1) {
           evtSource.close();
           if (reason === 'logged_out') {
-            disconnectedTitle.textContent = 'Session Logged Out';
-            disconnectedMsg.innerHTML = 'Your WhatsApp session has ended.<br />Please relink to continue receiving recaps.';
+            disconnectedTitle.textContent = 'Session logged out';
+            disconnectedMsg.innerHTML = 'Your WhatsApp session has ended. Relink to continue receiving recaps.';
           } else {
-            disconnectedTitle.textContent = 'Connection Rejected';
-            disconnectedMsg.innerHTML = 'WhatsApp rejected this session.<br />Please relink your account.';
+            disconnectedTitle.textContent = 'Connection rejected';
+            disconnectedMsg.innerHTML = 'WhatsApp rejected this session. Please relink your account.';
           }
           showView('disconnected');
           return;
         }
 
-        statusEl.textContent = 'Disconnected. Reconnecting...';
+        statusEl.textContent = 'Disconnected. Reconnecting…';
         spinner.style.display = 'block';
         qrImg.style.display = 'none';
         showView('setup');
@@ -502,12 +1155,12 @@
       // ── Logout ──────────────────────────────────────────────────────
       logoutBtn.addEventListener('click', function () {
         logoutBtn.disabled = true;
-        logoutBtn.textContent = 'Logging out...';
+        logoutBtn.textContent = 'Logging out…';
         fetch('/setup/logout' + uidParam, { method: 'POST' })
           .then(function () { window.location.reload(); })
           .catch(function () {
             logoutBtn.disabled = false;
-            logoutBtn.textContent = 'Logout WhatsApp';
+            logoutBtn.textContent = 'Log out WhatsApp';
             alert('Logout failed. Please try again.');
           });
       });
@@ -520,7 +1173,7 @@
       manageContactsBtn.addEventListener('click', function () {
         var isVisible = contactsPanel.style.display === 'block';
         contactsPanel.style.display = isVisible ? 'none' : 'block';
-        manageContactsBtn.textContent = isVisible ? 'Manage Contacts' : 'Hide Contacts';
+        manageContactsBtn.textContent = isVisible ? 'Contacts & sync' : 'Hide contacts & sync';
         if (!isVisible) loadContacts();
       });
 
@@ -572,7 +1225,7 @@
 
         clearFeedback();
         addContactBtn.disabled = true;
-        addContactBtn.textContent = 'Saving...';
+        addContactBtn.textContent = 'Saving…';
 
         fetch('/setup/contacts/save' + uidParam, {
           method: 'POST',
@@ -584,7 +1237,7 @@
             if (!res.ok) {
               setFeedback(res.json.error || 'Failed to save.', true);
             } else {
-              setFeedback(res.json.result || 'Contact saved!', false);
+              setFeedback(res.json.result || 'Contact saved.', false);
               contactNameInput.value = '';
               contactPhoneInput.value = '';
               loadContacts();
@@ -593,7 +1246,7 @@
           .catch(function () { setFeedback('Network error. Please try again.', true); })
           .finally(function () {
             addContactBtn.disabled = false;
-            addContactBtn.textContent = 'Add Contact';
+            addContactBtn.textContent = 'Add contact';
           });
       });
 
@@ -618,7 +1271,7 @@
           }
 
           importContactsBtn.disabled = true;
-          importContactsBtn.textContent = 'Importing...';
+          importContactsBtn.textContent = 'Importing…';
 
           var r = await fetch('/setup/contacts/import' + uidParam, {
             method: 'POST',
@@ -629,7 +1282,7 @@
           if (!r.ok) {
             setFeedback(json.error || 'Import failed.', true);
           } else {
-            setFeedback(json.result || 'Import complete!', false);
+            setFeedback(json.result || 'Import complete.', false);
             loadContacts();
           }
         } catch (err) {
@@ -638,7 +1291,7 @@
           }
         } finally {
           importContactsBtn.disabled = false;
-          importContactsBtn.textContent = 'Import from Phone';
+          importContactsBtn.textContent = 'Import from phone';
         }
       });
 
@@ -650,7 +1303,7 @@
 
       resyncBtn.addEventListener('click', function () {
         resyncBtn.disabled = true;
-        resyncBtn.textContent = 'Syncing...';
+        resyncBtn.textContent = 'Syncing…';
         resyncFeedback.textContent = '';
         resyncFeedback.className = '';
 
@@ -661,7 +1314,7 @@
               resyncFeedback.textContent = res.json.error || 'Resync failed.';
               resyncFeedback.className = 'feedback-error';
             } else {
-              resyncFeedback.textContent = res.json.result || 'Resync complete!';
+              resyncFeedback.textContent = res.json.result || 'Resync complete.';
               resyncFeedback.className = 'feedback-success';
             }
           })
@@ -671,14 +1324,14 @@
           })
           .finally(function () {
             resyncBtn.disabled = false;
-            resyncBtn.textContent = 'Resync Contacts';
+            resyncBtn.textContent = 'Resync contacts';
           });
       });
 
       // ── Resync groups ───────────────────────────────────────────
       resyncGroupsBtn.addEventListener('click', function () {
         resyncGroupsBtn.disabled = true;
-        resyncGroupsBtn.textContent = 'Syncing...';
+        resyncGroupsBtn.textContent = 'Syncing…';
         resyncGroupsFeedback.textContent = '';
         resyncGroupsFeedback.className = '';
 
@@ -689,7 +1342,7 @@
               resyncGroupsFeedback.textContent = res.json.error || 'Resync failed.';
               resyncGroupsFeedback.className = 'feedback-error';
             } else {
-              resyncGroupsFeedback.textContent = res.json.result || 'Resync complete!';
+              resyncGroupsFeedback.textContent = res.json.result || 'Resync complete.';
               resyncGroupsFeedback.className = 'feedback-success';
             }
           })
@@ -699,14 +1352,14 @@
           })
           .finally(function () {
             resyncGroupsBtn.disabled = false;
-            resyncGroupsBtn.textContent = 'Resync Groups';
+            resyncGroupsBtn.textContent = 'Resync groups';
           });
       });
 
       function deleteContact(jid, li) {
         var delBtn = li.querySelector('.delete-btn');
         delBtn.disabled = true;
-        delBtn.textContent = '...';
+        delBtn.textContent = '…';
 
         fetch('/setup/contacts' + uidParam, {
           method: 'DELETE',
